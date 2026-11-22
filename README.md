@@ -63,11 +63,13 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 
 Download the latest build from [Releases](../../releases).
 
-**macOS** (Apple Silicon and Intel): `tine_<version>_universal.dmg`. The build is not notarized, so on first launch right-click tine.app and choose **Open**, or run:
+**macOS** (Apple Silicon and Intel): `tine_<version>_universal.dmg`. Drag tine to Applications. The build is signed but not notarized, so the first launch needs one confirmation: open tine, then choose **Open Anyway** in System Settings → Privacy & Security. Or run:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/tine.app
 ```
+
+On first start, tine offers to open **Full Disk Access** in System Settings. Turn tine on there once, and macOS stops asking separately for Desktop, Documents, Downloads and other folders, for tine and every command you run in it. Every release is signed with the same certificate, so the permission stays across updates. You can also find it later in the command palette: `> Allow Full Disk Access`.
 
 **Linux** (x86-64):
 
@@ -135,19 +137,6 @@ npm install
 npm run tauri dev    # development build, reloads on frontend changes
 npm run app          # release bundle in src-tauri/target/release/bundle/
 ```
-
-<details>
-<summary><b>macOS: keep folder permissions across rebuilds</b></summary>
-
-macOS ties folder permissions (Desktop, Documents, Downloads) to an app's code signature. An unsigned local build gets a new identity each time, so macOS asks again after every rebuild. Create a personal signing certificate in your own keychain once:
-
-```sh
-sh scripts/macos-signing.sh
-```
-
-`npm run app` then signs with it and the permissions stay. The script asks for your password to trust the certificate and to let `codesign` use it without prompting. To undo, delete "tine local signing" in Keychain Access.
-
-</details>
 
 ### Tests
 

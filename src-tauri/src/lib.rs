@@ -242,6 +242,30 @@ async fn open_url(url: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Whether macOS gave tine Full Disk Access. Without it, macOS asks separately for Desktop,
+/// Documents, Downloads and other protected places. Always true elsewhere.
+#[tauri::command]
+fn full_disk_access() -> bool {
+    // shortcut: the TCC database is readable only with Full Disk Access; the usual check, as macOS has no API for it.
+    !cfg!(target_os = "macos")
+        || std::env::var_os("HOME").is_some_and(|home| {
+            std::fs::File::open(
+                std::path::Path::new(&home).join("Library/Application Support/com.apple.TCC/TCC.db"),
+            )
+            .is_ok()
+        })
+}
+
+/// Opens System Settings at Privacy & Security > Full Disk Access (macOS only).
+#[tauri::command]
+fn open_full_disk_access_settings() -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        .spawn()?;
+    Ok(())
+}
+
 /// Native menu so Cmd+C/X/V reach the focused view as clipboard events and Cmd+Q quits.
 /// Other shortcuts stay unbound here so the frontend receives them; custom items send a
 /// `menu` event with their id.
@@ -326,6 +350,8 @@ pub fn run() {
             let _ = app.emit("menu", event.id().0.as_str());
         })
         .invoke_handler(tauri::generate_handler![
+            full_disk_access,
+            open_full_disk_access_settings,
             pty_spawn,
             pty_write,
             pty_resize,

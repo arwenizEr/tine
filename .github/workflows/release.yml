@@ -1,6 +1,8 @@
 # Release builds: a universal .dmg for macOS, .AppImage and .deb for Linux. Push a tag such as
 # v0.2.0 to get a draft GitHub release with all three; run it by hand for artifacts only.
-# The macOS build is not notarized (no Apple Developer ID here); see README for opening it.
+# The macOS build is signed with the project's own certificate (scripts/release-signing.sh puts it
+# in the APPLE_* secrets), so users keep their privacy permissions across updates. It is not
+# notarized (no Apple Developer ID), so Gatekeeper asks to confirm the first launch.
 name: Release
 
 on:
@@ -26,6 +28,9 @@ jobs:
               src-tauri/target/release/bundle/appimage/*.AppImage
               src-tauri/target/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
+    env:
+      # Secrets cannot appear in `if:`; this flag can. Forks have no certificate.
+      SIGNED: ${{ matrix.os == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +54,31 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
-      - run: npx tauri build ${{ matrix.args }}
+
+      # A self-signed certificate signs only once trusted for code signing on this machine.
+      - name: Trust the release certificate
+        if: env.SIGNED == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -nokeys -passin env:APPLE_CERTIFICATE_PASSWORD -out "$RUNNER_TEMP/cert.pem" \
+            || openssl pkcs12 -legacy -in "$RUNNER_TEMP/cert.p12" -nokeys -passin env:APPLE_CERTIFICATE_PASSWORD -out "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+
+      # Tauri imports APPLE_CERTIFICATE into a temporary keychain and signs with it.
+      - name: Build (signed)
+        if: env.SIGNED == 'true'
+        run: npx tauri build ${{ matrix.args }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+
+      - name: Build
+        if: env.SIGNED != 'true'
+        run: npx tauri build ${{ matrix.args }}
 
       - uses: actions/upload-artifact@v4
         with:

@@ -22,7 +22,10 @@ type TauriGlobal = {
   };
   dialog: {
     open(options: { directory: boolean }): Promise<string | string[] | null>;
-    ask(message: string, options: { title: string; kind: "warning" }): Promise<boolean>;
+    ask(
+      message: string,
+      options: { title: string; kind: "warning" | "info"; okLabel?: string; cancelLabel?: string },
+    ): Promise<boolean>;
   };
 };
 
@@ -162,6 +165,20 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 export const confirmDialog = (title: string, message: string) => tauri.dialog.ask(message, { title, kind: "warning" });
+
+/** macOS: whether tine has Full Disk Access, and the System Settings page that grants it. */
+export const fullDiskAccess = () => invoke<boolean>("full_disk_access");
+export const openFullDiskAccessSettings = () => invoke<void>("open_full_disk_access_settings");
+
+/** Asks once, at first start on macOS, for the one grant that covers every protected folder. */
+export async function offerFullDiskAccess(): Promise<void> {
+  if (await fullDiskAccess()) return;
+  const yes = await tauri.dialog.ask(
+    "macOS asks separately before tine (and every command you run in it) can open Desktop, Documents, Downloads and other protected folders.\n\nTurn on tine under Full Disk Access once, and macOS stops asking.",
+    { title: "Allow access to your files once", kind: "info", okLabel: "Open Settings", cancelLabel: "Not Now" },
+  );
+  if (yes) await openFullDiskAccessSettings();
+}
 
 let notificationsAllowed: Promise<boolean> | null = null;
 /** A desktop notification; macOS asks for permission the first time. */

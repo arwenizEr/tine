@@ -2,7 +2,7 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { errorMessage, fsWatch, onFsChanged, onMenu, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
 import { dirname } from "./paths.ts";
@@ -141,6 +141,7 @@ export function mountApp(root: HTMLElement): () => void {
     { label: "Toggle Follow Mode", run: () => followMode.set(!followMode.get()) },
     { label: "Find in Terminal", run: () => term.find() },
     { label: "Clear Terminal", run: () => term.clear() },
+    ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
     {
       label: "Open Settings",
       run: () => {
@@ -240,6 +241,16 @@ export function mountApp(root: HTMLElement): () => void {
     run(action);
   };
   addEventListener("keydown", onKeyDown, true);
+
+  // First start on macOS: one Full Disk Access grant instead of a prompt per protected folder.
+  if (terminal.isMac) {
+    let asked = false;
+    try {
+      asked = localStorage.getItem("fullDiskAccessOffered") === "1";
+      localStorage.setItem("fullDiskAccessOffered", "1");
+    } catch {}
+    if (!asked) void offerFullDiskAccess().catch(() => {});
+  }
 
   const menuListener = onMenu((id) => {
     if (id === "new_file") newFile();
