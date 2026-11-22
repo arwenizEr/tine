@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fmt::Display;
+use std::io::ErrorKind;
 
 /// Every command error crosses the IPC boundary as `{ code, message }`.
 #[derive(Debug, Serialize)]
@@ -23,6 +24,12 @@ impl AppError {
 
 impl From<std::io::Error> for AppError {
     fn from(e: std::io::Error) -> Self {
-        Self::io(e)
+        let code = match e.kind() {
+            ErrorKind::NotFound => "not_found",
+            ErrorKind::AlreadyExists => "exists",
+            ErrorKind::PermissionDenied => "permission",
+            _ => "io",
+        };
+        Self::new(code, e)
     }
 }

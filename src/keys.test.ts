@@ -35,6 +35,15 @@ test("Linux: Ctrl+Shift shortcuts, shifted digits still select tabs", () => {
   assert.equal(keyAction(key("t", "KeyT", { metaKey: true }), false), null);
 });
 
+test("panel toggles on both platforms; New File and Open Folder via menu on macOS", () => {
+  assert.deepEqual(keyAction(key("b", "KeyB", { metaKey: true }), true), { type: "toggleSidebar" });
+  assert.deepEqual(keyAction(key("J", "KeyJ", { ctrlKey: true, shiftKey: true }), false), { type: "toggleViewer" });
+  assert.equal(keyAction(key("n", "KeyN", { metaKey: true }), true), null);
+  assert.equal(keyAction(key("o", "KeyO", { metaKey: true }), true), null);
+  assert.deepEqual(keyAction(key("N", "KeyN", { ctrlKey: true, shiftKey: true }), false), { type: "newFile" });
+  assert.deepEqual(keyAction(key("O", "KeyO", { ctrlKey: true, shiftKey: true }), false), { type: "openFolder" });
+});
+
 test("Shift+Enter sends ESC CR; plain Enter goes to the shell", () => {
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), true), { type: "send", data: SHIFT_ENTER });
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), false), { type: "send", data: SHIFT_ENTER });

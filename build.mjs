@@ -12,6 +12,9 @@ const ctx = await esbuild.context({
   entryPoints: ["src/main.ts"],
   bundle: true,
   format: "esm",
+  // Language packages load on demand, so each becomes its own chunk.
+  splitting: true,
+  chunkNames: "chunks/[name]-[hash]",
   outdir: "dist",
   minify: !watch,
   sourcemap: watch,

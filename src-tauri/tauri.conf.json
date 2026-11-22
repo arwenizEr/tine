@@ -10,13 +10,32 @@
   "app": {
     "withGlobalTauri": true,
     "windows": [
-      { "label": "main", "title": "tine", "width": 1100, "height": 700, "minWidth": 400, "minHeight": 240 }
+      {
+        "label": "main",
+        "title": "tine",
+        "width": 1100,
+        "height": 700,
+        "minWidth": 400,
+        "minHeight": 240
+      }
     ],
-    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" }
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ]
   }
 }

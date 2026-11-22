@@ -1,7 +1,8 @@
 use crate::error::AppError;
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -19,10 +20,23 @@ struct Session {
 
 type Sessions = Arc<Mutex<HashMap<u32, Arc<Session>>>>;
 
+const ZSH_INTEGRATION: &str = include_str!("../../shell-integration/integration.zsh");
+const BASH_INTEGRATION: &str = include_str!("../../shell-integration/integration.bash");
+
+/// Writes the shell integration scripts into `dir`: zsh needs its file named `.zshenv`
+/// inside the folder that becomes ZDOTDIR.
+pub fn install_shell_integration(dir: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(".zshenv"), ZSH_INTEGRATION)?;
+    std::fs::write(dir.join("integration.bash"), BASH_INTEGRATION)
+}
+
 #[derive(Default)]
 pub struct PtyManager {
     sessions: Sessions,
     next_id: AtomicU32,
+    /// Folder from `install_shell_integration`; `None` starts plain login shells.
+    integration_dir: Option<PathBuf>,
 }
 
 fn default_shell() -> String {
@@ -43,10 +57,29 @@ fn size(cols: u16, rows: u16) -> PtySize {
 }
 
 impl PtyManager {
+    pub fn new(integration_dir: Option<PathBuf>) -> Self {
+        Self {
+            integration_dir,
+            ..Self::default()
+        }
+    }
+
     /// Starts the user's login shell. `on_data` receives output batched to at most
     /// every 8 ms or 64 KB; `on_exit` runs once, after the last output, with the exit code.
     pub fn spawn(
         &self,
+        cwd: Option<String>,
+        cols: u16,
+        rows: u16,
+        on_data: impl FnMut(Vec<u8>) + Send + 'static,
+        on_exit: impl FnOnce(u32, Option<i32>) + Send + 'static,
+    ) -> Result<u32, AppError> {
+        self.spawn_shell(&default_shell(), cwd, cols, rows, on_data, on_exit)
+    }
+
+    fn spawn_shell(
+        &self,
+        shell: &str,
         cwd: Option<String>,
         cols: u16,
         rows: u16,
@@ -57,9 +90,29 @@ impl PtyManager {
             .openpty(size(cols, rows))
             .map_err(AppError::io)?;
 
-        let mut cmd = CommandBuilder::new(default_shell());
-        // Login shell: apps started from Finder get a minimal environment otherwise.
-        cmd.arg("-l");
+        let mut cmd = CommandBuilder::new(shell);
+        // Always a login shell (bash emulates it in its integration script): apps started
+        // from Finder get a minimal environment otherwise. Integration never edits dotfiles.
+        let name = Path::new(shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        match (&self.integration_dir, name) {
+            (Some(dir), "zsh") => {
+                cmd.arg("-l");
+                match std::env::var_os("ZDOTDIR") {
+                    Some(user) => cmd.env("TINE_USER_ZDOTDIR", user),
+                    None => cmd.env_remove("TINE_USER_ZDOTDIR"),
+                }
+                cmd.env("ZDOTDIR", dir);
+            }
+            (Some(dir), "bash") => {
+                cmd.arg("--rcfile");
+                cmd.arg(dir.join("integration.bash"));
+                cmd.arg("-i");
+            }
+            _ => cmd.arg("-l"),
+        }
         if let Some(dir) = cwd.or_else(|| std::env::var("HOME").ok()) {
             cmd.cwd(dir);
         }
@@ -253,6 +306,43 @@ mod tests {
             .expect("exit callback");
         assert_eq!(code, Some(3));
         assert_eq!(s.mgr.write(s.id, b"x").unwrap_err().code, "not_found");
+    }
+
+    fn osc7_reported_by(shell: &str) {
+        if !Path::new(shell).exists() {
+            eprintln!("skipping: {shell} not installed");
+            return;
+        }
+        let dir = crate::fs::tests::TempDir::new();
+        install_shell_integration(&dir.0).unwrap();
+        let mgr = PtyManager::new(Some(dir.0.clone()));
+        let (tx, out) = mpsc::channel();
+        let id = mgr
+            .spawn_shell(
+                shell,
+                None,
+                80,
+                24,
+                move |b| {
+                    let _ = tx.send(b);
+                },
+                |_, _| {},
+            )
+            .unwrap();
+        mgr.write(id, b"cd /usr\r").unwrap();
+        let text = wait_for(&out, "/usr\x1b\\");
+        assert!(text.contains("\x1b]7;file://"), "no OSC 7 in {text:?}");
+        mgr.kill(id).unwrap();
+    }
+
+    #[test]
+    fn zsh_integration_reports_cwd() {
+        osc7_reported_by("/bin/zsh");
+    }
+
+    #[test]
+    fn bash_integration_reports_cwd() {
+        osc7_reported_by("/bin/bash");
     }
 
     #[test]

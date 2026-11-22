@@ -6,8 +6,14 @@
   --bg-raised: #262b35;
   --fg: #d7dae0;
   --fg-muted: #8b93a1;
-  --border: #323844;
+  --border: #2c313b;
   --accent: #6ea8fe;
+  --selection: #2c3a52;
+  --warning-bg: #4a3b1c;
+  --warning-fg: #f3d58c;
+  --shadow: 0 10px 34px rgb(0 0 0 / 40%), 0 1px 3px rgb(0 0 0 / 30%);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 120ms;
 
   --term-bg: #1e222a;
   --term-fg: #d7dae0;

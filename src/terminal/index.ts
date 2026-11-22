@@ -1,11 +1,13 @@
-import { Terminal, type ITheme } from "@xterm/xterm";
+import { Terminal, type ILink, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { closeWindow, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
-import { activeTabId, setTabTitle, tabs } from "../state/tabs.ts";
-import { keyAction, type KeyAction } from "./keys.ts";
+import { closeWindow, fsStat, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
+import { findPathLinks, parseOsc7, resolve, shellQuote } from "../paths.ts";
+import { commands } from "../state/commands.ts";
+import { openDoc, selected } from "../state/files.ts";
+import { activeTabId, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
 import { mountTabBar } from "./tabbar.ts";
 
 type Session = {
@@ -16,24 +18,36 @@ type Session = {
   ptyId: number | null;
 };
 
-const isMac = navigator.userAgent.includes("Mac");
-
-function cssVar(style: CSSStyleDeclaration, name: string): string {
-  return style.getPropertyValue(name).trim();
-}
+export const isMac = navigator.userAgent.includes("Mac");
 
 function themeFromCss(): ITheme {
   const s = getComputedStyle(document.documentElement);
+  const v = (name: string) => s.getPropertyValue(name).trim();
   return {
-    background: cssVar(s, "--term-bg"),
-    foreground: cssVar(s, "--term-fg"),
-    cursor: cssVar(s, "--term-cursor"),
-    selectionBackground: cssVar(s, "--term-selection"),
+    background: v("--term-bg"),
+    foreground: v("--term-fg"),
+    cursor: v("--term-cursor"),
+    selectionBackground: v("--term-selection"),
   };
 }
 
+/** Terminal panel actions, called by app-level shortcuts. */
+export type TerminalActions = {
+  newTab(cwd?: string): void;
+  closeTab(): void;
+  selectTab(index: number): void;
+  clear(): void;
+  copy(): void;
+  paste(): void;
+  /** Writes raw bytes (such as Shift+Enter's sequence) to the active shell. */
+  send(data: string): void;
+  /** The element holding the terminals, to tell whether a key or drop belongs to them. */
+  host: HTMLElement;
+  dispose(): void;
+};
+
 /** The terminal panel: tab strip plus one xterm.js instance and one PTY per tab. */
-export function mount(root: HTMLElement): () => void {
+export function mount(root: HTMLElement): TerminalActions {
   const sessions = new Map<number, Session>();
   let nextId = 0;
 
@@ -70,6 +84,34 @@ export function mount(root: HTMLElement): () => void {
     }
   };
 
+  /** Cmd+click (Ctrl+click on Linux) on a path in the output opens it in the viewer. */
+  const pathLinkProvider = (session: Session) => ({
+    provideLinks(y: number, callback: (links: ILink[] | undefined) => void) {
+      const line = session.term.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
+      const cwd = tabs.get().find((t) => t.id === session.id)?.cwd;
+      // shortcut: ranges assume one cell per character, so links after wide (CJK, emoji) text are offset.
+      const candidates = cwd ? findPathLinks(line) : [];
+      if (!cwd || candidates.length === 0) return callback(undefined);
+      void Promise.all(
+        candidates.map(async (c): Promise<ILink | null> => {
+          const path = resolve(cwd, c.path);
+          const stat = await fsStat(path).catch(() => null);
+          if (!stat || stat.kind === "other") return null;
+          return {
+            range: { start: { x: c.start + 1, y }, end: { x: c.end, y } },
+            text: line.slice(c.start, c.end),
+            decorations: { underline: true, pointerCursor: true },
+            activate: (e) => {
+              if (!(isMac ? e.metaKey : e.ctrlKey)) return;
+              if (stat.kind === "dir") selected.set({ path, kind: "dir" });
+              else openDoc(path, "file", { line: c.line, col: c.col, focus: true });
+            },
+          };
+        }),
+      ).then((links) => callback(links.filter((l) => l !== null)));
+    },
+  });
+
   const create = async (cwd?: string) => {
     const id = ++nextId;
     const el = document.createElement("div");
@@ -102,9 +144,15 @@ export function mount(root: HTMLElement): () => void {
 
     const session: Session = { id, term, fit, el, ptyId: null };
     sessions.set(id, session);
-    tabs.set([...tabs.get(), { id, title: "shell" }]);
+    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null }]);
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
+    term.parser.registerOscHandler(7, (data) => {
+      const dir = parseOsc7(data);
+      if (dir) setTabCwd(id, dir);
+      return true;
+    });
+    term.registerLinkProvider(pathLinkProvider(session));
 
     let ptyId: number;
     try {
@@ -122,41 +170,6 @@ export function mount(root: HTMLElement): () => void {
     term.onData((data) => void ptyWrite(ptyId, data).catch(() => {}));
     term.onResize(({ cols, rows }) => void ptyResize(ptyId, cols, rows).catch(() => {}));
   };
-
-  const run = (action: KeyAction) => {
-    const s = active();
-    switch (action.type) {
-      case "newTab":
-        return void create();
-      case "closeTab":
-        return s && close(s.id);
-      case "selectTab": {
-        const tab = tabs.get()[action.index];
-        return tab && activate(tab.id);
-      }
-      case "clear":
-        return s?.term.clear();
-      case "copy":
-        if (s?.term.hasSelection()) void navigator.clipboard.writeText(s.term.getSelection());
-        return;
-      case "paste":
-        if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
-        return;
-      case "send":
-        if (s?.ptyId != null) void ptyWrite(s.ptyId, action.data).catch(() => {});
-        return;
-    }
-  };
-
-  // Capture phase, so app shortcuts are handled before xterm.js sees the key.
-  const onKeyDown = (e: KeyboardEvent) => {
-    const action = keyAction(e, isMac);
-    if (!action) return;
-    e.preventDefault();
-    e.stopPropagation();
-    run(action);
-  };
-  window.addEventListener("keydown", onKeyDown, true);
 
   const disposeTabBar = mountTabBar(root, {
     select: activate,
@@ -177,14 +190,51 @@ export function mount(root: HTMLElement): () => void {
     }
   });
 
+  // A file dropped on the terminal types its quoted path, as in iTerm2; agents pick up images this way.
+  const dropListener = onFileDrop((paths, x, y) => {
+    const s = active();
+    if (s && host.contains(document.elementFromPoint(x, y))) {
+      s.term.paste(paths.map(shellQuote).join(" ") + " ");
+      s.term.focus();
+    }
+  });
+
+  commands.newTab = (cwd) => void create(cwd);
+  commands.pasteToTerminal = (text) => active()?.term.paste(text);
+
   void create();
 
-  return () => {
-    window.removeEventListener("keydown", onKeyDown, true);
-    resizeObserver.disconnect();
-    void exitListener.then((unlisten) => unlisten());
-    for (const id of [...sessions.keys()]) close(id);
-    disposeTabBar();
-    host.remove();
+  return {
+    host,
+    newTab: (cwd) => void create(cwd),
+    closeTab: () => {
+      const s = active();
+      if (s) close(s.id);
+    },
+    selectTab: (index) => {
+      const tab = tabs.get()[index];
+      if (tab) activate(tab.id);
+    },
+    clear: () => active()?.term.clear(),
+    copy: () => {
+      const s = active();
+      if (s?.term.hasSelection()) void navigator.clipboard.writeText(s.term.getSelection());
+    },
+    paste: () => {
+      const s = active();
+      if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
+    },
+    send: (data) => {
+      const s = active();
+      if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});
+    },
+    dispose: () => {
+      resizeObserver.disconnect();
+      void exitListener.then((unlisten) => unlisten());
+      void dropListener.then((unlisten) => unlisten());
+      for (const id of [...sessions.keys()]) close(id);
+      disposeTabBar();
+      host.remove();
+    },
   };
 }

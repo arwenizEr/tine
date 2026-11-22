@@ -7,6 +7,10 @@ export type KeyAction =
   | { type: "clear" }
   | { type: "copy" }
   | { type: "paste" }
+  | { type: "toggleSidebar" }
+  | { type: "toggleViewer" }
+  | { type: "newFile" }
+  | { type: "openFolder" }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -22,8 +26,8 @@ export type KeyLike = {
 export const SHIFT_ENTER = "\x1b\r";
 
 /**
- * App shortcuts use Cmd on macOS and Ctrl+Shift on Linux; everything else goes to the shell.
- * On macOS, Cmd+C/Cmd+V are left to the native Edit menu, which fires copy/paste events xterm handles.
+ * App shortcuts use Cmd on macOS and Ctrl+Shift on Linux; everything else goes to the focused view.
+ * On macOS, Cmd+C/V and Cmd+N/O are left to the native menu, which handles them itself.
  */
 export function keyAction(e: KeyLike, mac: boolean): KeyAction | null {
   if (e.key === "Enter" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -44,10 +48,18 @@ export function keyAction(e: KeyLike, mac: boolean): KeyAction | null {
       return { type: "closeTab" };
     case "k":
       return { type: "clear" };
+    case "b":
+      return { type: "toggleSidebar" };
+    case "j":
+      return { type: "toggleViewer" };
     case "c":
       return mac ? null : { type: "copy" };
     case "v":
       return mac ? null : { type: "paste" };
+    case "n":
+      return mac ? null : { type: "newFile" };
+    case "o":
+      return mac ? null : { type: "openFolder" };
   }
   return null;
 }
