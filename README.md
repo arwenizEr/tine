@@ -97,4 +97,4 @@ cd src-tauri && cargo clippy --all-targets && cargo test   # Rust core, against 
 
 ## License
 
-<!-- Pending the owner's choice; see "Open decisions" in PLAN.md. -->
+[MIT](LICENSE) © Mert Kanber
