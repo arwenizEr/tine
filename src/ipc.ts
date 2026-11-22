@@ -166,6 +166,8 @@ export async function pickFolder(): Promise<string | null> {
 
 export const confirmDialog = (title: string, message: string) => tauri.dialog.ask(message, { title, kind: "warning" });
 
+export const logError = (message: string) => void invoke("log_error", { message }).catch(() => {});
+
 /** macOS: whether tine has Full Disk Access, and the System Settings page that grants it. */
 export const fullDiskAccess = () => invoke<boolean>("full_disk_access");
 export const openFullDiskAccessSettings = () => invoke<void>("open_full_disk_access_settings");

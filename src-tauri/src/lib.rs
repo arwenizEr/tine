@@ -242,6 +242,12 @@ async fn open_url(url: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Frontend errors, written to stderr: the release webview has no console to read them from.
+#[tauri::command]
+fn log_error(message: String) {
+    eprintln!("[tine frontend] {message}");
+}
+
 /// Whether macOS gave tine Full Disk Access. Without it, macOS asks separately for Desktop,
 /// Documents, Downloads and other protected places. Always true elsewhere.
 #[tauri::command]
@@ -351,6 +357,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             full_disk_access,
+            log_error,
             open_full_disk_access_settings,
             pty_spawn,
             pty_write,
