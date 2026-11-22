@@ -235,7 +235,6 @@ export function mountApp(root: HTMLElement): () => void {
     // focus; elsewhere the editor keeps its own Shift+Enter, search and cursor moves.
     const terminalOnly = action.type === "send" || action.type === "find" || action.type === "block";
     if (terminalOnly && !term.host.contains(e.target as Node)) return;
-    if (action.type === "sendSelection" && !side.contains(e.target as Node)) return;
     e.preventDefault();
     e.stopPropagation();
     run(action);

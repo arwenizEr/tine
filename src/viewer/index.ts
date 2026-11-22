@@ -27,10 +27,15 @@ import { createState, readOnlyExtensions } from "./editor.ts";
 import { renderFolder } from "./folder.ts";
 import { renderMarkdown } from "./markdown.ts";
 
-/** The focused file or diff editor's selected lines as "path:3-7"; null when none has focus. */
+/**
+ * Selected lines in the viewer as "path:3-7": the focused editor's, or else whichever shown
+ * editor has a selection (focus may already be back in the terminal). Null when there is none.
+ */
 export function selectionRef(): string | null {
-  const dom = document.activeElement?.closest<HTMLElement>(".cm-editor");
-  const cm = dom && EditorView.findFromDOM(dom);
+  const focused = document.activeElement?.closest<HTMLElement>(".viewer .cm-editor");
+  const shown = [...document.querySelectorAll<HTMLElement>(".viewer .cm-editor")].filter((e) => e.offsetParent);
+  const views = (focused ? [focused] : shown).map((e) => EditorView.findFromDOM(e));
+  const cm = focused ? views[0] : views.find((v) => v && !v.state.selection.main.empty);
   const doc = docs.get().find((d) => d.id === activeDocId.get());
   if (!cm || !doc || doc.kind === "dir") return null;
   const { from, to } = cm.state.selection.main;
