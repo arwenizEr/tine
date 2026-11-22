@@ -10,6 +10,8 @@ export type Tab = { id: number; title: string; cwd: string | null; activity: Act
 
 export const tabs = signal<Tab[]>([]);
 export const activeTabId = signal<number | null>(null);
+/** Two tabs shown side by side, left then right; the active one has focus. Null: one tab shown. */
+export const splitPair = signal<[number, number] | null>(null);
 
 const update = (id: number, change: Partial<Tab>) =>
   tabs.set(tabs.get().map((t) => (t.id === id ? { ...t, ...change } : t)));

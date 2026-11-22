@@ -32,6 +32,7 @@ It stays small: a Rust core with the system webview, an installer under 20 MB, a
 
 ### A real terminal
 - Tabs, true colour, Unicode, GPU rendering with a fallback.
+- **Split:** Cmd+D shows a second tab beside the current one, for two agents or an agent and a dev server.
 - Full-screen programs (vim, htop, less), Option as Meta, bracketed paste.
 - **Shift+Enter** inserts a newline in agent prompts (Claude Code, Codex).
 - Clickable links, and clickable file paths that open at the right line.
@@ -89,6 +90,7 @@ On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the 
 | --- | --- |
 | Cmd+T / Cmd+W | New tab / close tab (or the open file, when the viewer has focus) |
 | Cmd+1 … Cmd+9 | Go to tab |
+| Cmd+D | Split: open a tab beside this one, or back to one tab |
 | Cmd+P | Command palette: find a file, or type `>` for commands |
 | Cmd+K | Clear the terminal |
 | Cmd+F | Find in the terminal (in the editor: find in the file) |

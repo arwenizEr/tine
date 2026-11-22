@@ -9,7 +9,7 @@ import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../pat
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { settings } from "../state/settings.ts";
-import { activeTabId, type Activity, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { activeCwd, activeTabId, type Activity, setTabActivity, splitPair, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
 import { Blocks } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
@@ -64,6 +64,8 @@ export type TerminalActions = {
   restyle(): void;
   /** Gives the active tab keyboard focus. */
   focus(): void;
+  /** Shows a new tab beside the active one, or goes back to one tab when split. */
+  split(): void;
   /** The element holding the terminals, to tell whether a key or drop belongs to them. */
   host: HTMLElement;
   dispose(): void;
@@ -87,15 +89,32 @@ export function mount(root: HTMLElement): TerminalActions {
   /** Looking at a tab means it is active and the window has focus. */
   const looking = (id: number) => activeTabId.get() === id && document.hasFocus();
 
+  const fitVisible = () => {
+    for (const s of sessions.values()) if (!s.el.hidden) s.fit.fit();
+  };
+
+  /** Shows the active tab, or both tabs of the split pair. */
+  const layout = () => {
+    const pair = splitPair.get();
+    host.classList.toggle("split", pair !== null);
+    for (const s of sessions.values()) {
+      const pane = pair ? pair.indexOf(s.id) : s.id === activeTabId.get() ? 0 : -1;
+      s.el.hidden = pane < 0;
+      s.el.classList.toggle("pane-right", pair !== null && pane === 1);
+    }
+    fitVisible();
+  };
+
   const activate = (id: number) => {
     if (activeTabId.get() !== id) search.close();
+    // A tab picked while split replaces the pane that has focus.
+    const pair = splitPair.get();
+    const current = activeTabId.get();
+    if (pair && !pair.includes(id)) splitPair.set(pair[0] === current ? [id, pair[1]] : [pair[0], id]);
     activeTabId.set(id);
     if ((tabs.get().find((t) => t.id === id)?.activity ?? "idle") !== "busy") setTabActivity(id, "idle");
-    for (const s of sessions.values()) s.el.hidden = s.id !== id;
-    const s = sessions.get(id);
-    if (!s) return;
-    s.fit.fit();
-    s.term.focus();
+    layout();
+    sessions.get(id)?.term.focus();
   };
 
   const close = (id: number) => {
@@ -110,10 +129,16 @@ export function mount(root: HTMLElement): TerminalActions {
     const index = list.findIndex((t) => t.id === id);
     const rest = list.filter((t) => t.id !== id);
     tabs.set(rest);
+    // Closing either half of a split leaves the other half on its own.
+    const pair = splitPair.get();
+    const other = pair?.includes(id) ? pair.find((p) => p !== id) : undefined;
+    if (other !== undefined) splitPair.set(null);
     if (rest.length === 0) {
       void closeWindow();
     } else if (activeTabId.get() === id) {
-      activate(rest[Math.min(index, rest.length - 1)].id);
+      activate(other ?? rest[Math.min(index, rest.length - 1)].id);
+    } else if (other !== undefined) {
+      layout();
     }
   };
 
@@ -145,11 +170,15 @@ export function mount(root: HTMLElement): TerminalActions {
     },
   });
 
-  const create = async (cwd?: string) => {
+  const create = async (cwd?: string, beside?: number) => {
     const id = ++nextId;
     const el = document.createElement("div");
     el.className = "terminal";
     host.append(el);
+    // Clicking into a pane of a split gives that tab focus.
+    el.addEventListener("focusin", () => {
+      if (activeTabId.get() !== id && sessions.has(id)) activate(id);
+    });
 
     const term = new Terminal({
       allowProposedApi: true, // needed by the unicode11 addon
@@ -222,6 +251,7 @@ export function mount(root: HTMLElement): TerminalActions {
       lastInput = performance.now();
       if (data.includes("\r")) commands.turnStarted();
     });
+    if (beside !== undefined && sessions.has(beside)) splitPair.set([beside, id]);
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
     term.parser.registerOscHandler(7, (data) => {
@@ -263,7 +293,7 @@ export function mount(root: HTMLElement): TerminalActions {
   });
   root.append(host);
 
-  const resizeObserver = new ResizeObserver(() => active()?.fit.fit());
+  const resizeObserver = new ResizeObserver(fitVisible);
   resizeObserver.observe(host);
 
   const exitListener = onPtyExit(({ pty_id }) => {
@@ -381,6 +411,16 @@ export function mount(root: HTMLElement): TerminalActions {
     },
     find: () => search.open(),
     focus: () => active()?.term.focus(),
+    split: () => {
+      const id = activeTabId.get();
+      if (splitPair.get()) {
+        splitPair.set(null);
+        layout();
+        active()?.term.focus();
+      } else if (id !== null) {
+        void create(activeCwd() ?? undefined, id);
+      }
+    },
     block: (direction) => active()?.blocks.jump(direction),
     restyle: () => {
       const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--mono-font");
@@ -391,7 +431,7 @@ export function mount(root: HTMLElement): TerminalActions {
         s.term.options.fontSize = fontSize;
         s.term.options.theme = theme;
       }
-      active()?.fit.fit();
+      fitVisible();
     },
     send: (data) => {
       const s = active();

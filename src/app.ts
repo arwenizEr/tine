@@ -133,6 +133,7 @@ export function mountApp(root: HTMLElement): () => void {
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
     { label: "Close Tab", run: () => term.closeTab() },
+    { label: "Split Terminal", run: () => term.split() },
     { label: "New File…", run: newFile },
     { label: "Open Folder…", run: () => void openFolder() },
     { label: "Toggle File Tree", run: () => sidebarVisible.set(!sidebarVisible.get()) },
@@ -218,6 +219,8 @@ export function mountApp(root: HTMLElement): () => void {
         return term.block(action.direction);
       case "palette":
         return palette.open();
+      case "split":
+        return term.split();
       case "sendSelection": {
         // Hands the agent a pointer to the code ("src/a.ts:3-7 "), then lets you type the ask.
         const ref = viewer.selectionRef();

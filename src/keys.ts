@@ -15,6 +15,7 @@ export type KeyAction =
   | { type: "palette" }
   | { type: "block"; direction: -1 | 1 }
   | { type: "sendSelection" }
+  | { type: "split" }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -45,6 +46,7 @@ export const ACTIONS = {
   prevBlock: { type: "block", direction: -1 },
   nextBlock: { type: "block", direction: 1 },
   sendSelection: { type: "sendSelection" },
+  split: { type: "split" },
 } satisfies Record<string, KeyAction>;
 type ActionName = keyof typeof ACTIONS;
 
@@ -61,6 +63,7 @@ const MAC: Partial<Record<ActionName, string>> = {
   prevBlock: "cmd+up",
   nextBlock: "cmd+down",
   sendSelection: "cmd+l",
+  split: "cmd+d",
 };
 const LINUX: Partial<Record<ActionName, string>> = {
   newTab: "ctrl+shift+t",
@@ -73,6 +76,7 @@ const LINUX: Partial<Record<ActionName, string>> = {
   prevBlock: "ctrl+shift+up",
   nextBlock: "ctrl+shift+down",
   sendSelection: "ctrl+shift+l",
+  split: "ctrl+shift+d",
   copy: "ctrl+shift+c",
   paste: "ctrl+shift+v",
   newFile: "ctrl+shift+n",

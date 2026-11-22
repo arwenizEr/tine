@@ -1,4 +1,4 @@
-import { activeTabId, tabs } from "../state/tabs.ts";
+import { activeTabId, splitPair, tabs } from "../state/tabs.ts";
 
 /** Renders the tab strip from state; clicks call back into the terminal panel. */
 export function mountTabBar(
@@ -14,7 +14,8 @@ export function mountTabBar(
     bar.replaceChildren(
       ...tabs.get().map((tab) => {
         const el = document.createElement("div");
-        el.className = "tab" + (tab.id === active ? " active" : "");
+        const shown = tab.id !== active && splitPair.get()?.includes(tab.id);
+        el.className = "tab" + (tab.id === active ? " active" : shown ? " shown" : "");
         el.title = tab.title;
         const label = document.createElement("span");
         label.className = "tab-title";
@@ -46,7 +47,7 @@ export function mountTabBar(
     bar.append(add);
   };
 
-  const unsubs = [tabs.subscribe(render), activeTabId.subscribe(render)];
+  const unsubs = [tabs.subscribe(render), activeTabId.subscribe(render), splitPair.subscribe(render)];
   render();
   return () => {
     unsubs.forEach((u) => u());
