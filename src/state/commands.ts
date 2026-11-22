@@ -13,6 +13,8 @@ export const commands = {
    * did not, or null when it did.
    */
   cdInTerminal: (_dir: string): string | null => "No terminal",
+  /** Opens the settings window. */
+  openSettings: (): void => {},
   /** Enter was pressed in a terminal: a new turn starts (for the git panel's "This turn"). */
   turnStarted: (): void => {},
 };

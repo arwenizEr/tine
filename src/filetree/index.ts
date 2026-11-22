@@ -108,6 +108,12 @@ async function trashItem(path: string): Promise<void> {
 export function mount(parent: HTMLElement): () => void {
   const header = document.createElement("div");
   header.className = "filetree-header";
+  const headerName = document.createElement("span");
+  headerName.className = "filetree-name";
+  const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙", title: "Settings" });
+  gear.setAttribute("aria-label", "Settings");
+  gear.onclick = () => commands.openSettings();
+  header.append(headerName, gear);
   const el = document.createElement("div");
   el.className = "filetree";
   el.tabIndex = 0;
@@ -255,8 +261,8 @@ export function mount(parent: HTMLElement): () => void {
     el.scrollTop = 0;
     root = { path, name: basename(path) || path, kind: "dir", ignored: false, depth: -1, expanded: true, children: null };
     byPath.set(path, root);
-    header.textContent = root.name;
-    header.title = path;
+    headerName.textContent = root.name;
+    headerName.title = path;
     void expand(root);
   };
 
@@ -436,7 +442,7 @@ export function mount(parent: HTMLElement): () => void {
     if (n?.expanded) void load(n).catch(() => {});
   });
 
-  header.textContent = "No folder";
+  headerName.textContent = "No folder";
 
   return () => {
     unsubs.forEach((u) => u());

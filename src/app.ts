@@ -137,6 +137,8 @@ export function mountApp(root: HTMLElement): () => void {
     else toast("Settings are not loaded yet.");
   };
 
+  commands.openSettings = () => openSettings(openSettingsFile);
+
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
     { label: "Close Tab", run: () => term.closeTab() },
