@@ -103,9 +103,6 @@ export type GitDiff = { old_text: string; new_text: string; binary: boolean };
 export const gitStatus = (repo: string) => invoke<GitStatus>("git_status", { repo });
 export const gitDiffFile = (repo: string, path: string, staged: boolean) =>
   invoke<GitDiff>("git_diff_file", { repo, path, staged });
-export const gitStage = (repo: string, paths: string[]) => invoke<void>("git_stage", { repo, paths });
-export const gitUnstage = (repo: string, paths: string[]) => invoke<void>("git_unstage", { repo, paths });
-export const gitCommit = (repo: string, message: string) => invoke<string>("git_commit", { repo, message });
 
 export const onGitChanged = (handler: (repo: string) => void) =>
   tauri.event.listen<{ repo: string }>("git-changed", (e) => handler(e.payload.repo));

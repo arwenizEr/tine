@@ -2,12 +2,14 @@ use crate::error::AppError;
 use crate::fs::READ_CAP;
 use git2::{Delta, Diff, DiffFindOptions, DiffOptions, Oid, Patch, Repository, Tree};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct FileChange {
     pub path: String,
-    /// The previous path of a staged rename; unstaging needs both paths.
+    /// The previous path of a staged rename.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_path: Option<String>,
     pub status: &'static str,
@@ -190,87 +192,6 @@ pub fn diff_file(repo: &Path, path: &Path, staged: bool) -> Result<FileDiff, App
     })
 }
 
-fn relatives(repo: &Path, paths: &[String]) -> Result<Vec<PathBuf>, AppError> {
-    paths
-        .iter()
-        .map(|p| relative(repo, Path::new(p)).map(Path::to_path_buf))
-        .collect()
-}
-
-/// Stages files as they are on disk; a file missing from disk stages its deletion.
-pub fn stage(repo: &Path, paths: &[String]) -> Result<(), AppError> {
-    let r = open(repo)?;
-    let mut index = r.index()?;
-    for (abs, rel) in paths.iter().zip(relatives(repo, paths)?) {
-        if Path::new(abs).symlink_metadata().is_ok() {
-            index.add_path(&rel)?;
-        } else {
-            index.remove_path(&rel)?;
-        }
-    }
-    Ok(index.write()?)
-}
-
-/// Resets the index entries to HEAD, leaving the working tree alone (`git restore --staged`).
-pub fn unstage(repo: &Path, paths: &[String]) -> Result<(), AppError> {
-    let r = open(repo)?;
-    let rels = relatives(repo, paths)?;
-    match r
-        .head()
-        .ok()
-        .and_then(|h| h.peel(git2::ObjectType::Commit).ok())
-    {
-        Some(head) => r.reset_default(Some(&head), rels.iter().map(PathBuf::as_path))?,
-        None => {
-            // No commits yet: unstaging means dropping the entry from the index.
-            let mut index = r.index()?;
-            for rel in &rels {
-                index.remove_path(rel)?;
-            }
-            index.write()?;
-        }
-    }
-    Ok(())
-}
-
-/// Commits the index with the user's configured name and email. libgit2 runs no hooks.
-pub fn commit(repo: &Path, message: &str) -> Result<String, AppError> {
-    let message = message.trim();
-    if message.is_empty() {
-        return Err(AppError::new(
-            "empty_message",
-            "Write a commit message first.",
-        ));
-    }
-    let r = open(repo)?;
-    let sig = r.signature().map_err(|_| {
-        AppError::new(
-            "no_identity",
-            "Set your name and email first: git config --global user.name / user.email",
-        )
-    })?;
-    let tree_id = r.index()?.write_tree()?;
-    let tree = r.find_tree(tree_id)?;
-    let parent = r.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let unchanged = match &parent {
-        Some(p) => p.tree_id() == tree_id,
-        None => tree.is_empty(),
-    };
-    if unchanged {
-        return Err(AppError::new("nothing_to_commit", "Nothing is staged."));
-    }
-    let parents: Vec<_> = parent.iter().collect();
-    let id = r.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        &format!("{message}\n"),
-        &tree,
-        &parents,
-    )?;
-    Ok(id.to_string())
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -291,17 +212,35 @@ pub mod tests {
         (t, r)
     }
 
-    fn s(p: PathBuf) -> String {
-        p.to_string_lossy().into_owned()
+    /// `git add` (or `git rm --cached` for files gone from disk), done with git2 directly.
+    fn stage(t: &TempDir, paths: &[&str]) {
+        let r = Repository::open(&t.0).unwrap();
+        let mut index = r.index().unwrap();
+        for p in paths {
+            if t.path(p).exists() {
+                index.add_path(Path::new(p)).unwrap();
+            } else {
+                index.remove_path(Path::new(p)).unwrap();
+            }
+        }
+        index.write().unwrap();
     }
 
     fn commit_all(t: &TempDir, paths: &[&str], msg: &str) {
-        stage(
-            &t.0,
-            &paths.iter().map(|p| s(t.path(p))).collect::<Vec<_>>(),
-        )
-        .unwrap();
-        commit(&t.0, msg).unwrap();
+        stage(t, paths);
+        let r = Repository::open(&t.0).unwrap();
+        let sig = r.signature().unwrap();
+        let tree = r
+            .find_tree(r.index().unwrap().write_tree().unwrap())
+            .unwrap();
+        let parent = r.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<_> = parent.iter().collect();
+        r.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+            .unwrap();
+    }
+
+    fn s(p: PathBuf) -> String {
+        p.to_string_lossy().into_owned()
     }
 
     fn find<'a>(st: &'a Status, path: &Path, staged: bool) -> &'a FileChange {
@@ -340,7 +279,7 @@ pub mod tests {
         fs::create_dir(t.path("dir")).unwrap();
         fs::write(t.path("dir/new.txt"), "a\nb\n").unwrap();
         fs::write(t.path("staged.txt"), "s\n").unwrap();
-        stage(&t.0, &[s(t.path("staged.txt"))]).unwrap();
+        stage(&t, &["staged.txt"]);
 
         let st = status(&t.0).unwrap();
         let staged = find(&st, &t.path("staged.txt"), true);
@@ -376,12 +315,12 @@ pub mod tests {
     }
 
     #[test]
-    fn staged_rename_reports_both_paths_and_unstages() {
+    fn staged_rename_reports_both_paths() {
         let (t, _r) = repo();
         fs::write(t.path("old.txt"), "same\ncontent\nhere\n").unwrap();
         commit_all(&t, &["old.txt"], "init");
         fs::rename(t.path("old.txt"), t.path("new.txt")).unwrap();
-        stage(&t.0, &[s(t.path("old.txt")), s(t.path("new.txt"))]).unwrap();
+        stage(&t, &["old.txt", "new.txt"]);
 
         let st = status(&t.0).unwrap();
         assert_eq!(st.files.len(), 1, "{:?}", st.files);
@@ -390,12 +329,29 @@ pub mod tests {
         assert_eq!(f.old_path.as_deref(), Some(s(t.path("old.txt")).as_str()));
         let d = diff_file(&t.0, &t.path("new.txt"), true).unwrap();
         assert_eq!(d.old_text, d.new_text);
+    }
 
-        unstage(&t.0, &[s(t.path("old.txt")), s(t.path("new.txt"))]).unwrap();
+    #[test]
+    fn unborn_repo_lists_staged_and_untracked() {
+        let (t, _r) = repo();
+        fs::write(t.path("a.txt"), "a\n").unwrap();
+        fs::write(t.path("b.txt"), "b\n").unwrap();
+        stage(&t, &["a.txt"]);
         let st = status(&t.0).unwrap();
-        assert!(st.files.iter().all(|f| !f.staged), "{:?}", st.files);
-        assert_eq!(find(&st, &t.path("old.txt"), false).status, "deleted");
-        assert_eq!(find(&st, &t.path("new.txt"), false).status, "untracked");
+        assert_eq!(st.branch, "main");
+        assert_eq!(find(&st, &t.path("a.txt"), true).status, "added");
+        assert_eq!(find(&st, &t.path("b.txt"), false).status, "untracked");
+    }
+
+    #[test]
+    fn diff_rejects_paths_outside_the_repo() {
+        let (t, _r) = repo();
+        assert_eq!(
+            diff_file(&t.0, Path::new("/etc/hosts"), false)
+                .unwrap_err()
+                .code,
+            "invalid"
+        );
     }
 
     #[test]
@@ -406,54 +362,8 @@ pub mod tests {
     }
 
     #[test]
-    fn stage_and_unstage_round_trip_before_first_commit() {
-        let (t, _r) = repo();
-        fs::write(t.path("a.txt"), "a\n").unwrap();
-        stage(&t.0, &[s(t.path("a.txt"))]).unwrap();
-        assert!(find(&status(&t.0).unwrap(), &t.path("a.txt"), true).staged);
-        unstage(&t.0, &[s(t.path("a.txt"))]).unwrap();
-        assert_eq!(
-            find(&status(&t.0).unwrap(), &t.path("a.txt"), false).status,
-            "untracked"
-        );
-    }
-
-    #[test]
-    fn commit_uses_configured_identity() {
-        let (t, r) = repo();
-        fs::write(t.path("a.txt"), "a\n").unwrap();
-        stage(&t.0, &[s(t.path("a.txt"))]).unwrap();
-        let id = commit(&t.0, "  first commit \n").unwrap();
-
-        let c = r.find_commit(Oid::from_str(&id).unwrap()).unwrap();
-        assert_eq!(c.message().ok(), Some("first commit\n"));
-        assert_eq!(c.author().name().ok(), Some("Test User"));
-        assert_eq!(c.author().email().ok(), Some("test@example.com"));
-        assert_eq!(r.head().unwrap().target(), Some(c.id()));
-        assert!(status(&t.0).unwrap().files.is_empty());
-
-        assert_eq!(commit(&t.0, "again").unwrap_err().code, "nothing_to_commit");
-        assert_eq!(commit(&t.0, "   ").unwrap_err().code, "empty_message");
-
-        // Second commit gets the first as parent.
-        fs::write(t.path("a.txt"), "b\n").unwrap();
-        commit_all(&t, &["a.txt"], "second");
-        let head = r.head().unwrap().peel_to_commit().unwrap();
-        assert_eq!(head.parent_id(0).unwrap(), c.id());
-    }
-
-    #[test]
     fn outside_a_repo_is_not_repo() {
         let t = TempDir::new();
         assert_eq!(status(&t.0).unwrap_err().code, "not_repo");
-    }
-
-    #[test]
-    fn paths_outside_the_repo_are_rejected() {
-        let (t, _r) = repo();
-        assert_eq!(
-            stage(&t.0, &["/etc/hosts".into()]).unwrap_err().code,
-            "invalid"
-        );
     }
 }

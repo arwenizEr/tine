@@ -174,21 +174,6 @@ async fn git_diff_file(
     git::diff_file(abs(&repo)?, abs(&path)?, staged)
 }
 
-#[tauri::command(rename_all = "snake_case")]
-async fn git_stage(repo: String, paths: Vec<String>) -> Result<(), AppError> {
-    git::stage(abs(&repo)?, &paths)
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn git_unstage(repo: String, paths: Vec<String>) -> Result<(), AppError> {
-    git::unstage(abs(&repo)?, &paths)
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn git_commit(repo: String, message: String) -> Result<String, AppError> {
-    git::commit(abs(&repo)?, &message)
-}
-
 /// Only links meant for a browser or mail client; never `file:` or custom schemes from untrusted output.
 fn is_openable_url(url: &str) -> bool {
     ["https://", "http://", "mailto:"].iter().any(|p| {
@@ -317,9 +302,6 @@ pub fn run() {
             fs_unwatch,
             git_status,
             git_diff_file,
-            git_stage,
-            git_unstage,
-            git_commit,
             open_url
         ]);
     #[cfg(target_os = "macos")]
