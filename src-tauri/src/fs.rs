@@ -154,6 +154,33 @@ pub struct FileText {
     pub mtime: u64,
 }
 
+/// Image previews: these formats only, up to 20 MB, as raw bytes for the viewer.
+const IMAGE_EXT: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
+const IMAGE_CAP: u64 = 20 * 1024 * 1024;
+
+/// An image's bytes. Only image files, so this cannot become a way to read anything else as
+/// raw bytes; the viewer shows them through a blob: URL instead of a file-serving protocol.
+pub fn read_image(path: &Path) -> Result<Vec<u8>, AppError> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !IMAGE_EXT.contains(&ext.as_str()) {
+        return Err(AppError::new(
+            "invalid",
+            format!("{} is not an image", path.display()),
+        ));
+    }
+    let file = fs::File::open(path)?;
+    if file.metadata()?.len() > IMAGE_CAP {
+        return Err(AppError::new("too_large", "Image larger than 20 MB"));
+    }
+    let mut buf = Vec::new();
+    file.take(IMAGE_CAP).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
 /// Reads at most 2 MB. Files with a NUL byte or invalid UTF-8 are `binary` with empty text,
 /// so they are never shown (or saved back) garbled.
 pub fn read_file(path: &Path) -> Result<FileText, AppError> {
@@ -346,6 +373,17 @@ pub mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn read_image_only_reads_images() {
+        let t = TempDir::new();
+        let png = t.path("a.PNG");
+        std::fs::write(&png, b"\x89PNG fake").unwrap();
+        assert_eq!(read_image(&png).unwrap(), b"\x89PNG fake");
+        let secret = t.path("id_rsa");
+        std::fs::write(&secret, b"key").unwrap();
+        assert_eq!(read_image(&secret).unwrap_err().code, "invalid");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import type { IDecoration, IMarker, Terminal } from "@xterm/xterm";
-import { decodeCommand, formatDuration, parseMark } from "./marks.ts";
+import { decodeCommand, formatDuration, parseMark, signedBy } from "./marks.ts";
 
 /** One command and its output, anchored to xterm markers so it survives resize and reflow. */
 export type Block = {
@@ -29,13 +29,19 @@ export class Blocks {
   private pending = "";
   private running: Block | null = null;
 
-  constructor(private readonly term: Terminal) {
+  /** `token` is the one given to this tab's shell; marks without it are ignored. */
+  constructor(
+    private readonly term: Terminal,
+    token: string,
+  ) {
     term.parser.registerOscHandler(133, (data) => {
-      this.mark(data);
+      const mark = signedBy(data, token);
+      if (mark !== null) this.mark(mark);
       return true;
     });
     term.parser.registerOscHandler(633, (data) => {
-      if (data.startsWith("E;")) this.pending = decodeCommand(data.slice(2));
+      const payload = signedBy(data, token);
+      if (payload?.startsWith("E;")) this.pending = decodeCommand(payload.slice(2));
       return true;
     });
   }

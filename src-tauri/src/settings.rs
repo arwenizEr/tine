@@ -100,7 +100,10 @@ const EDITABLE: [&str; 4] = ["font_family", "font_size", "theme", "shell"];
 /// refuses a result that would not load.
 pub fn set(path: &Path, key: &str, value: Option<&toml::Value>) -> Result<Settings, AppError> {
     if !EDITABLE.contains(&key) {
-        return Err(AppError::new("invalid", format!("{key} cannot be set here")));
+        return Err(AppError::new(
+            "invalid",
+            format!("{key} cannot be set here"),
+        ));
     }
     load(path)?; // creates the template on first use
     let text = std::fs::read_to_string(path)?;
@@ -197,11 +200,20 @@ mod tests {
         // Back to the default: the line is commented out, not deleted.
         let s = set(&path, "theme", None).unwrap();
         assert_eq!(s.theme, None);
-        assert!(std::fs::read_to_string(&path).unwrap().contains("# theme = \"light\""));
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("# theme = \"light\"")
+        );
 
         // A key the file has never mentioned goes above the first table.
         std::fs::write(&path, "[keybindings]\nnewTab = \"cmd+t\"\n").unwrap();
-        set(&path, "shell", Some(&toml::Value::String("/bin/bash".into()))).unwrap();
+        set(
+            &path,
+            "shell",
+            Some(&toml::Value::String("/bin/bash".into())),
+        )
+        .unwrap();
         let s = load(&path).unwrap();
         assert_eq!(s.shell.as_deref(), Some("/bin/bash"));
         assert_eq!(s.keybindings.len(), 1);

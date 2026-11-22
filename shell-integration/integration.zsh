@@ -2,6 +2,10 @@
 # where this file is installed as .zshenv; it hands ZDOTDIR back to the user's
 # config, so zsh then reads the user's own .zprofile, .zshrc and .zlogin as usual.
 
+# Signs tine's marks; kept unexported so programs run here cannot forge them.
+typeset -g __tine_token=${TINE_TOKEN-}
+unset TINE_TOKEN
+
 if [[ -n ${TINE_USER_ZDOTDIR+x} ]]; then
   ZDOTDIR=$TINE_USER_ZDOTDIR
 else
@@ -18,9 +22,9 @@ if [[ -o interactive ]]; then
   __tine_ran=
   __tine_precmd() {
     local ret=$?
-    [[ -n $__tine_ran ]] && printf '\e]133;D;%s\a' "$ret"
+    [[ -n $__tine_ran ]] && printf '\e]133;D;%s;tine=%s\a' "$ret" "$__tine_token"
     __tine_ran=
-    printf '\e]133;A\a'
+    printf '\e]133;A;tine=%s\a' "$__tine_token"
     printf '\e]7;file://%s%s\e\\' "$HOST" "${PWD//\%/%25}"
   }
   __tine_preexec() {
@@ -28,7 +32,8 @@ if [[ -o interactive ]]; then
     cmd=${cmd//$'\n'/%0A}
     cmd=${cmd//$'\a'/%07}
     cmd=${cmd//$'\e'/%1B}
-    printf '\e]633;E;%s\a\e]133;C\a' "$cmd"
+    cmd=${cmd//;/%3B}
+    printf '\e]633;E;%s;tine=%s\a\e]133;C;tine=%s\a' "$cmd" "$__tine_token" "$__tine_token"
     __tine_ran=1
   }
   autoload -Uz add-zsh-hook

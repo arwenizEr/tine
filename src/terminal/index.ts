@@ -6,6 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
 import { toast } from "../ui/toast.ts";
+import { notification } from "./marks.ts";
 import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
@@ -192,6 +193,8 @@ export function mount(root: HTMLElement): TerminalActions {
       theme: themeFromCss(),
       linkHandler: { activate: (_e, uri) => void openUrl(uri) }, // OSC 8 links
     });
+    // Signs this tab's shell marks (see Blocks): 128 random bits, letters and digits only.
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
     const fit = new FitAddon();
     term.loadAddon(fit);
     const searchAddon = new SearchAddon();
@@ -211,7 +214,7 @@ export function mount(root: HTMLElement): TerminalActions {
       // No WebGL (e.g. some WebKitGTK setups): xterm keeps its DOM renderer.
     }
 
-    const session: Session = { id, term, fit, search: searchAddon, blocks: new Blocks(term), el, ptyId: null };
+    const session: Session = { id, term, fit, search: searchAddon, blocks: new Blocks(term, token), el, ptyId: null };
     sessions.set(id, session);
     tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle" }]);
 
@@ -238,8 +241,8 @@ export function mount(root: HTMLElement): TerminalActions {
       if (looking(id)) return;
       setTabActivity(id, activity);
       if (!document.hasFocus()) {
-        const title = tabs.get().find((t) => t.id === id)?.title || "tine";
-        void notify(title, message);
+        const { title, body } = notification(tabs.get().find((t) => t.id === id)?.title ?? "", message);
+        void notify(title, body);
       }
     };
     term.onBell(() => attention("Finished, or waiting for you"));
@@ -270,9 +273,9 @@ export function mount(root: HTMLElement): TerminalActions {
     };
     try {
       // A restored folder may be gone by now: start in the home folder instead.
-      ptyId = await ptySpawn(term.cols, term.rows, onBytes, cwd).catch((e) => {
+      ptyId = await ptySpawn(term.cols, term.rows, onBytes, token, cwd).catch((e) => {
         if (!cwd) throw e;
-        return ptySpawn(term.cols, term.rows, onBytes);
+        return ptySpawn(term.cols, term.rows, onBytes, token);
       });
     } catch (e) {
       term.write(`\r\nCould not start the shell: ${(e as { message?: string }).message ?? e}\r\n`);

@@ -73,6 +73,7 @@ async fn pty_spawn(
     app: AppHandle,
     ptys: State<'_, PtyManager>,
     cwd: Option<String>,
+    token: Option<String>,
     cols: u16,
     rows: u16,
     on_data: Channel<Response>,
@@ -85,6 +86,7 @@ async fn pty_spawn(
     ptys.spawn(
         shell,
         cwd,
+        token,
         cols,
         rows,
         move |bytes| {
@@ -133,6 +135,11 @@ async fn fs_read_file(path: String) -> Result<fs::FileText, AppError> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn fs_read_image(path: String) -> Result<Response, AppError> {
+    fs::read_image(abs(&path)?).map(Response::new)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn fs_stat(path: String) -> Result<fs::Stat, AppError> {
     fs::stat(abs(&path)?)
 }
@@ -174,17 +181,9 @@ async fn fs_reveal(path: String) -> Result<(), AppError> {
     fs::reveal(abs(&path)?)
 }
 
-/// Also opens the folder's files to the asset protocol, which serves image previews.
 #[tauri::command(rename_all = "snake_case")]
-async fn fs_watch(
-    app: AppHandle,
-    watcher: State<'_, Watcher>,
-    root: String,
-) -> Result<(), AppError> {
-    watcher.watch(abs(&root)?.to_str().unwrap_or(&root))?;
-    app.asset_protocol_scope()
-        .allow_directory(&root, false)
-        .map_err(AppError::io)
+async fn fs_watch(watcher: State<'_, Watcher>, root: String) -> Result<(), AppError> {
+    watcher.watch(abs(&root)?.to_str().unwrap_or(&root))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -265,7 +264,8 @@ async fn full_disk_access() -> bool {
     !cfg!(target_os = "macos")
         || std::env::var_os("HOME").is_some_and(|home| {
             std::fs::File::open(
-                std::path::Path::new(&home).join("Library/Application Support/com.apple.TCC/TCC.db"),
+                std::path::Path::new(&home)
+                    .join("Library/Application Support/com.apple.TCC/TCC.db"),
             )
             .is_ok()
         })
@@ -378,6 +378,7 @@ pub fn run() {
             fs_list_dir,
             fs_find_files,
             fs_read_file,
+            fs_read_image,
             fs_stat,
             fs_write_file,
             fs_create_file,

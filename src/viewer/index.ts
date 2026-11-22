@@ -2,7 +2,7 @@ import { MergeView, unifiedMergeView } from "@codemirror/merge";
 import { EditorState, Transaction, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
-  assetUrl,
+  showImage,
   confirmDialog,
   errorCode,
   errorMessage,
@@ -127,7 +127,6 @@ export function mount(parent: HTMLElement): () => void {
     const current = watching.get(doc.id);
     if (current?.dir === dir) return current.ready;
     if (current) void fsUnwatch(current.dir).catch(() => {});
-    // Watching also opens the folder to the asset protocol, which image previews need.
     const ready = fsWatch(dir).catch(() => {});
     watching.set(doc.id, { dir, ready });
     return ready;
@@ -372,7 +371,7 @@ export function mount(parent: HTMLElement): () => void {
         imageHost.hidden = false;
         const img = document.createElement("img");
         img.alt = basename(doc.path);
-        img.src = `${assetUrl(doc.path)}?v=${l.stat.mtime}`;
+        void showImage(img, doc.path).catch((e) => imageHost.replaceChildren(infoCard(basename(doc.path), l.stat, errorMessage(e))));
         imageHost.replaceChildren(img);
         return;
       }

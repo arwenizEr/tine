@@ -8,7 +8,6 @@ type TauriGlobal = {
   core: {
     invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
     Channel: new <T>() => TauriChannel<T>;
-    convertFileSrc(path: string): string;
   };
   event: {
     listen<T>(event: string, handler: (e: { payload: T }) => void): Promise<Unlisten>;
@@ -47,11 +46,12 @@ export function ptySpawn(
   cols: number,
   rows: number,
   onData: (bytes: Uint8Array) => void,
+  token: string,
   cwd?: string,
 ): Promise<number> {
   const channel = new tauri.core.Channel<ArrayBuffer>();
   channel.onmessage = (bytes) => onData(new Uint8Array(bytes));
-  return invoke("pty_spawn", { cwd, cols, rows, on_data: channel });
+  return invoke("pty_spawn", { cwd, token, cols, rows, on_data: channel });
 }
 
 // Commands run concurrently in Rust, so two quick writes could reach the shell out of order.
@@ -104,8 +104,18 @@ export type FsChanged = { root: string; paths: string[] };
 export const onFsChanged = (handler: (e: FsChanged) => void) =>
   tauri.event.listen<FsChanged>("fs-changed", (e) => handler(e.payload));
 
-/** URL for an image preview, served by Tauri's asset protocol (scoped to watched folders). */
-export const assetUrl = (path: string) => tauri.core.convertFileSrc(path);
+const IMAGE_TYPES: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+};
+
+/** Shows the image file at `path` in `img`, from its bytes; the blob: URL is freed once it has loaded. */
+export async function showImage(img: HTMLImageElement, path: string): Promise<void> {
+  const bytes = await invoke<ArrayBuffer>("fs_read_image", { path });
+  const type = IMAGE_TYPES[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] ?? "";
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  img.onload = img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+}
 
 // --- Git ---
 

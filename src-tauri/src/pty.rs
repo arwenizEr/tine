@@ -66,10 +66,13 @@ impl PtyManager {
 
     /// Starts the user's login shell. `on_data` receives output batched to at most
     /// every 8 ms or 64 KB; `on_exit` runs once, after the last output, with the exit code.
+    /// `token` goes to the shell integration, which signs its prompt marks with it.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         shell: Option<String>,
         cwd: Option<String>,
+        token: Option<String>,
         cols: u16,
         rows: u16,
         on_data: impl FnMut(Vec<u8>) + Send + 'static,
@@ -78,13 +81,15 @@ impl PtyManager {
         let shell = shell
             .filter(|s| !s.is_empty())
             .unwrap_or_else(default_shell);
-        self.spawn_shell(&shell, cwd, cols, rows, on_data, on_exit)
+        self.spawn_shell(&shell, cwd, token, cols, rows, on_data, on_exit)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn spawn_shell(
         &self,
         shell: &str,
         cwd: Option<String>,
+        token: Option<String>,
         cols: u16,
         rows: u16,
         mut on_data: impl FnMut(Vec<u8>) + Send + 'static,
@@ -119,6 +124,24 @@ impl PtyManager {
         }
         if let Some(dir) = cwd.or_else(|| std::env::var("HOME").ok()) {
             cmd.cwd(dir);
+        }
+        // The integration reads the token into an unexported variable and drops it from the
+        // environment, so programs run in the shell cannot forge marks. Never inherit one.
+        match token {
+            Some(t)
+                if !t.is_empty()
+                    && t.len() <= 64
+                    && t.bytes().all(|b| b.is_ascii_alphanumeric()) =>
+            {
+                cmd.env("TINE_TOKEN", t)
+            }
+            Some(_) => {
+                return Err(AppError::new(
+                    "invalid",
+                    "token must be 1 to 64 letters or digits",
+                ));
+            }
+            None => cmd.env_remove("TINE_TOKEN"),
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -241,6 +264,7 @@ mod tests {
             .spawn(
                 None,
                 Some(cwd),
+                None,
                 80,
                 24,
                 move |b| {
@@ -326,6 +350,7 @@ mod tests {
             .spawn_shell(
                 shell,
                 None,
+                Some("t0k3n".into()),
                 80,
                 24,
                 move |b| {
@@ -338,17 +363,22 @@ mod tests {
         let text = wait_for(&out, "/usr\x1b\\");
         assert!(text.contains("\x1b]7;file://"), "no OSC 7 in {text:?}");
         assert!(
-            text.contains("\x1b]133;A\x07"),
-            "no prompt mark in {text:?}"
+            text.contains("\x1b]133;A;tine=t0k3n\x07"),
+            "no signed prompt mark in {text:?}"
         );
 
-        // A failing command: its text, the start mark, then the end mark with exit code 3.
-        mgr.write(id, b"(exit 3)\r").unwrap();
-        let text = wait_for(&out, "\x1b]133;D;3\x07");
+        // A failing command: its text (`;` encoded), the start mark, then the end mark with
+        // exit code 3, all signed.
+        mgr.write(id, b"false;(exit 3)\r").unwrap();
+        let text = wait_for(&out, "\x1b]133;D;3;tine=t0k3n\x07");
         assert!(
-            text.contains("\x1b]633;E;(exit 3)\x07\x1b]133;C\x07"),
+            text.contains("\x1b]633;E;false%3B(exit 3);tine=t0k3n\x07\x1b]133;C;tine=t0k3n\x07"),
             "no command marks in {text:?}"
         );
+
+        // Programs run in the shell do not see the token.
+        mgr.write(id, b"sh -c 'echo T=$TINE_TOKEN=T'\r").unwrap();
+        wait_for(&out, "T==T");
         mgr.kill(id).unwrap();
     }
 

@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { assetUrl, errorMessage } from "../ipc.ts";
+import { errorMessage, showImage } from "../ipc.ts";
 import { basename } from "../paths.ts";
 import { quickLook, selected } from "../state/files.ts";
 import { infoCard, loadContent } from "./content.ts";
@@ -48,8 +48,8 @@ export function mount(parent: HTMLElement): () => void {
       } else if (c.type === "image") {
         const img = document.createElement("img");
         img.alt = basename(sel.path);
-        img.src = `${assetUrl(sel.path)}?v=${c.stat.mtime}`;
         content.replaceChildren(img);
+        await showImage(img, sel.path);
       } else if (c.markdown) {
         const article = document.createElement("article");
         article.className = "doc-markdown";
