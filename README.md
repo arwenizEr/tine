@@ -95,4 +95,4 @@ cd src-tauri && cargo clippy --all-targets && cargo test   # Rust core, against 
 
 ## License
 
-[MIT](LICENSE) © Mert Kanber
+[MIT](LICENSE) © arwenizEr
