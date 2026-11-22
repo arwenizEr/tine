@@ -24,3 +24,9 @@ export function signal<T>(initial: T): Signal<T> {
     },
   };
 }
+
+/** Like `subscribe`, but also runs `fn` now: for UI that must match the current value from the start. */
+export function watch<T>(s: Signal<T>, fn: (value: T) => void): () => void {
+  fn(s.get());
+  return s.subscribe(fn);
+}

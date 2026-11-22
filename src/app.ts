@@ -10,6 +10,7 @@ import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/la
 import { gitState, repo, sidebarView } from "./state/git.ts";
 import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
+import { watch } from "./signal.ts";
 import { toast } from "./ui/toast.ts";
 import * as viewer from "./viewer/index.ts";
 import * as quicklook from "./viewer/quicklook.ts";
@@ -175,9 +176,9 @@ export function mountApp(root: HTMLElement): () => void {
   });
 
   const unsubs = [
-    followMode.subscribe((on) => follow.setAttribute("aria-pressed", String(on))),
+    watch(followMode, (on) => follow.setAttribute("aria-pressed", String(on))),
     // Always visible so it can be found; it only works inside a git repository.
-    repo.subscribe((r) => {
+    watch(repo, (r) => {
       follow.disabled = !r;
       follow.title = r ? "Show each file's diff as it changes" : "Follow works inside a git repository: cd into one first";
     }),
@@ -185,14 +186,14 @@ export function mountApp(root: HTMLElement): () => void {
     selected.subscribe((sel) => {
       if (sel && isCompact()) viewerVisible.set(true);
     }),
-    sidebarView.subscribe((v) => {
+    watch(sidebarView, (v) => {
       filesView.hidden = v !== "files";
       gitView.hidden = v !== "git";
     }),
-    sidebarVisible.subscribe((v) => {
+    watch(sidebarVisible, (v) => {
       sidebar.hidden = leftHandle.hidden = !v;
     }),
-    viewerVisible.subscribe((v) => {
+    watch(viewerVisible, (v) => {
       side.hidden = rightHandle.hidden = !v;
     }),
   ];
