@@ -403,16 +403,17 @@ export function mount(parent: HTMLElement): () => void {
     const cwd = activeCwd();
     if (!cwd || cwd === lastCwd) return;
     lastCwd = cwd;
-    if (cwd === keepRootFor) {
-      keepRootFor = null;
-      const r = treeRoot.get();
-      if (r && isInside(r, cwd)) return;
-    }
+    const fromTree = cwd === keepRootFor;
+    keepRootFor = null;
     const token = ++followToken;
     const found = await findRoot(cwd);
     if (token !== followToken) return;
-    treeRoot.set(found.root);
+    // The repo always follows the shell, so Changes appears as soon as it is inside one.
     repo.set(found.isRepo ? found.root : null);
+    // A cd started from the tree keeps the tree where it is, as long as the folder is in view.
+    const r = treeRoot.get();
+    if (fromTree && r && isInside(r, cwd)) return;
+    treeRoot.set(found.root);
   };
 
   const unsubs = [
