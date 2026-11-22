@@ -505,6 +505,16 @@ button {
   outline: none;
 }
 
+.context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.menu-hint {
+  color: var(--fg-muted);
+}
+
 .context-menu hr {
   border: 0;
   border-top: 1px solid var(--border);

@@ -4,7 +4,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { closeWindow, fsStat, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
-import { findPathLinks, parseOsc7, resolve, shellQuote } from "../paths.ts";
+import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { activeTabId, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
@@ -198,6 +198,30 @@ export function mount(root: HTMLElement): TerminalActions {
       s.term.focus();
     }
   });
+
+  // The same for items dragged from tine's own tree or folder list (HTML drag and drop).
+  host.addEventListener(
+    "dragover",
+    (e) => {
+      if (!e.dataTransfer?.types.includes(PATH_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    true,
+  );
+  host.addEventListener(
+    "drop",
+    (e) => {
+      const path = e.dataTransfer?.getData(PATH_MIME);
+      const s = active();
+      if (!path || !s) return;
+      e.preventDefault();
+      e.stopPropagation();
+      s.term.paste(shellQuote(path) + " ");
+      s.term.focus();
+    },
+    true,
+  );
 
   commands.newTab = (cwd) => void create(cwd);
   commands.pasteToTerminal = (text) => active()?.term.paste(text);

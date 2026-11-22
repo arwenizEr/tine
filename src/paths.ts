@@ -1,5 +1,8 @@
 // Pure path helpers (POSIX, absolute paths), free of DOM imports so `node --test` can run them.
 
+/** Drag data type for a file or folder dragged from tine's own tree or folder list. */
+export const PATH_MIME = "application/x-tine-path";
+
 export const basename = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
 
 export function dirname(p: string): string {

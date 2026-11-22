@@ -1,4 +1,4 @@
-export type MenuItem = { label: string; run: () => void } | "separator";
+export type MenuItem = { label: string; hint?: string; run: () => void } | "separator";
 
 /** A context menu at the pointer; closes on choice, outside click or Escape. */
 export function showMenu(x: number, y: number, items: MenuItem[]): void {
@@ -16,6 +16,12 @@ export function showMenu(x: number, y: number, items: MenuItem[]): void {
     const b = document.createElement("button");
     b.setAttribute("role", "menuitem");
     b.textContent = item.label;
+    if (item.hint) {
+      const hint = document.createElement("span");
+      hint.className = "menu-hint";
+      hint.textContent = item.hint;
+      b.append(hint);
+    }
     b.onclick = () => {
       close();
       item.run();

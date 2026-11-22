@@ -14,7 +14,7 @@ import {
   type Entry,
   type Kind,
 } from "../ipc.ts";
-import { ancestors, basename, dirname, isInside, join } from "../paths.ts";
+import { ancestors, basename, dirname, isInside, join, PATH_MIME } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, quickLook, renamePath, selected, treeRoot } from "../state/files.ts";
 import { activeCwd, activeTabId, tabs } from "../state/tabs.ts";
@@ -147,6 +147,7 @@ export function mount(parent: HTMLElement): () => void {
         const row = document.createElement("div");
         row.className = "tree-row" + (n.path === sel ? " selected" : "") + (n.ignored ? " ignored" : "");
         row.dataset.path = n.path;
+        row.draggable = true;
         row.setAttribute("role", "treeitem");
         row.setAttribute("aria-level", String(n.depth + 1));
         row.setAttribute("aria-selected", String(n.path === sel));
@@ -274,6 +275,13 @@ export function mount(parent: HTMLElement): () => void {
     select(n);
     el.focus();
   };
+  win.ondragstart = (e) => {
+    const n = rowNode(e);
+    if (!n || !e.dataTransfer) return;
+    e.dataTransfer.setData(PATH_MIME, n.path);
+    e.dataTransfer.setData("text/plain", n.path);
+    e.dataTransfer.effectAllowed = "copy";
+  };
   win.ondblclick = (e) => {
     const n = rowNode(e);
     if (n?.kind === "dir") toggle(n);
@@ -294,7 +302,7 @@ export function mount(parent: HTMLElement): () => void {
     if (n) {
       items.push(
         { label: "Rename…", run: () => void renameItem(n.path, n.kind) },
-        { label: "Move to Trash", run: () => void trashItem(n.path) },
+        { label: "Move to Trash", hint: isMac ? "⌘⌫" : "Delete", run: () => void trashItem(n.path) },
         "separator",
       );
     }
@@ -339,6 +347,12 @@ export function mount(parent: HTMLElement): () => void {
         break;
       case "Escape":
         quickLook.set(false);
+        break;
+      case "Backspace":
+      case "Delete":
+        // Finder's Move to Trash: Cmd+Backspace on macOS; Delete on Linux.
+        if (!n || (isMac ? !e.metaKey : e.key !== "Delete")) return;
+        void trashItem(n.path);
         break;
       default:
         return;

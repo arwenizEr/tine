@@ -1,5 +1,5 @@
 import { errorMessage, fsListDir, fsStat, type Kind } from "../ipc.ts";
-import { join } from "../paths.ts";
+import { join, PATH_MIME } from "../paths.ts";
 import { formatDate, formatSize } from "./content.ts";
 
 const LIMIT = 1000;
@@ -40,6 +40,11 @@ export function renderFolder(host: HTMLElement, path: string, onPick: (path: str
         const size = row.insertCell();
         const date = row.insertCell();
         row.onclick = () => onPick(join(path, e.name), e.kind);
+        row.draggable = true;
+        row.ondragstart = (ev) => {
+          ev.dataTransfer?.setData(PATH_MIME, join(path, e.name));
+          ev.dataTransfer?.setData("text/plain", join(path, e.name));
+        };
         return { size, date };
       });
       host.replaceChildren(summary, table);
