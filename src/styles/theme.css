@@ -1,0 +1,16 @@
+:root {
+  --mono-font: "SF Mono", Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  --ui-font: -apple-system, system-ui, "Segoe UI", Ubuntu, sans-serif;
+
+  --bg: #1e222a;
+  --bg-raised: #262b35;
+  --fg: #d7dae0;
+  --fg-muted: #8b93a1;
+  --border: #323844;
+  --accent: #6ea8fe;
+
+  --term-bg: #1e222a;
+  --term-fg: #d7dae0;
+  --term-cursor: #d7dae0;
+  --term-selection: #3e4757;
+}
