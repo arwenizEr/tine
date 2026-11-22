@@ -288,10 +288,18 @@ export function mount(parent: HTMLElement): () => void {
     return row ? byPath.get(row.dataset.path!) : undefined;
   };
 
+  // Double-click is read from the click count, not a dblclick event: the first click re-renders
+  // the rows, and WebKit drops dblclick when the two clicks land on different elements.
   win.onclick = (e) => {
     const n = rowNode(e);
     if (!n) return;
-    if ((e.target as HTMLElement).classList.contains("tree-chevron")) toggle(n);
+    const onChevron = (e.target as HTMLElement).classList.contains("tree-chevron");
+    if (e.detail === 2 && !onChevron) {
+      if (n.kind === "dir") openFolder(n);
+      else openDoc(n.path, "file", { focus: true });
+      return;
+    }
+    if (onChevron) toggle(n);
     select(n);
     el.focus();
   };
@@ -301,11 +309,6 @@ export function mount(parent: HTMLElement): () => void {
     e.dataTransfer.setData(PATH_MIME, n.path);
     e.dataTransfer.setData("text/plain", n.path);
     e.dataTransfer.effectAllowed = "copy";
-  };
-  win.ondblclick = (e) => {
-    const n = rowNode(e);
-    if (n?.kind === "dir") openFolder(n);
-    else if (n) openDoc(n.path, "file", { focus: true });
   };
   el.oncontextmenu = (e) => {
     e.preventDefault();
