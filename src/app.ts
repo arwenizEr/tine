@@ -1,11 +1,12 @@
 import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
+import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
 import { onMenu, pickFolder } from "./ipc.ts";
 import { keyAction, type KeyAction } from "./keys.ts";
 import { commands } from "./state/commands.ts";
-import { treeRoot } from "./state/files.ts";
-import { sidebarVisible, viewerVisible } from "./state/layout.ts";
+import { selected, treeRoot } from "./state/files.ts";
+import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/layout.ts";
 import { gitState, repo, sidebarView } from "./state/git.ts";
 import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
@@ -86,6 +87,7 @@ export function mountApp(root: HTMLElement): () => void {
   side.setAttribute("aria-label", "Viewer");
   const leftHandle = resizer(sidebar, 1);
   const rightHandle = resizer(side, -1);
+  rightHandle.classList.add("viewer-handle");
   workspace.append(sidebar, leftHandle, main, rightHandle, side);
 
   const disposeSwitch = sidebarSwitch(sidebar);
@@ -95,6 +97,19 @@ export function mountApp(root: HTMLElement): () => void {
   const disposeBadge = mountBadge(statusBar, () => {
     sidebarView.set("git");
     sidebarVisible.set(true);
+  });
+
+  const follow = document.createElement("button");
+  follow.className = "follow-toggle";
+  follow.textContent = "Follow";
+  follow.title = "Show each file's diff as it changes";
+  follow.onclick = () => followMode.set(!followMode.get());
+  statusBar.append(follow);
+  const stopFollow = startFollow();
+
+  // Compact layout: the viewer is a drawer. Clicking the terminal puts it away.
+  main.addEventListener("mousedown", () => {
+    if (isCompact()) viewerVisible.set(false);
   });
   const term = terminal.mount(main);
   const disposeViewer = viewer.mount(side);
@@ -135,6 +150,8 @@ export function mountApp(root: HTMLElement): () => void {
         return void openFolder();
       case "send":
         return term.send(action.data);
+      case "find":
+        return term.find();
     }
   };
 
@@ -142,8 +159,9 @@ export function mountApp(root: HTMLElement): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     const action = keyAction(e, terminal.isMac);
     if (!action) return;
-    // Shift+Enter's escape sequence is for the terminal; the editor keeps its own Shift+Enter.
-    if (action.type === "send" && !term.host.contains(e.target as Node)) return;
+    // Shift+Enter's escape sequence and Cmd+F are the terminal's only while it has focus;
+    // elsewhere the editor keeps its own Shift+Enter and search.
+    if ((action.type === "send" || action.type === "find") && !term.host.contains(e.target as Node)) return;
     e.preventDefault();
     e.stopPropagation();
     run(action);
@@ -156,6 +174,14 @@ export function mountApp(root: HTMLElement): () => void {
   });
 
   const unsubs = [
+    followMode.subscribe((on) => follow.setAttribute("aria-pressed", String(on))),
+    repo.subscribe((r) => {
+      follow.hidden = !r;
+    }),
+    // On a narrow window, browsing the tree opens the drawer so the preview is visible.
+    selected.subscribe((sel) => {
+      if (sel && isCompact()) viewerVisible.set(true);
+    }),
     sidebarView.subscribe((v) => {
       filesView.hidden = v !== "files";
       gitView.hidden = v !== "git";
@@ -175,6 +201,8 @@ export function mountApp(root: HTMLElement): () => void {
     disposeQuickLook();
     disposeViewer();
     term.dispose();
+    stopFollow();
+    follow.remove();
     disposeBadge();
     disposeGit();
     disposeTree();

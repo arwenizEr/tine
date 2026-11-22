@@ -11,6 +11,7 @@ export type KeyAction =
   | { type: "toggleViewer" }
   | { type: "newFile" }
   | { type: "openFolder" }
+  | { type: "find" }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -50,6 +51,8 @@ export function keyAction(e: KeyLike, mac: boolean): KeyAction | null {
       return { type: "clear" };
     case "b":
       return { type: "toggleSidebar" };
+    case "f":
+      return { type: "find" };
     case "j":
       return { type: "toggleViewer" };
     case "c":

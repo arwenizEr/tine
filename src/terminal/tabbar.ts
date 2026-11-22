@@ -19,6 +19,12 @@ export function mountTabBar(
         const label = document.createElement("span");
         label.className = "tab-title";
         label.textContent = tab.title;
+        const activity = document.createElement("span");
+        activity.className = `tab-activity ${tab.activity}`;
+        if (tab.activity !== "idle") {
+          activity.setAttribute("role", "img");
+          activity.setAttribute("aria-label", tab.activity === "busy" ? "working" : "needs attention");
+        }
         const close = document.createElement("button");
         close.className = "tab-close";
         close.textContent = "×";
@@ -28,7 +34,7 @@ export function mountTabBar(
           actions.close(tab.id);
         };
         el.onclick = () => actions.select(tab.id);
-        el.append(label, close);
+        el.append(activity, label, close);
         return el;
       }),
     );

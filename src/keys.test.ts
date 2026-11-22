@@ -44,6 +44,12 @@ test("panel toggles on both platforms; New File and Open Folder via menu on macO
   assert.deepEqual(keyAction(key("O", "KeyO", { ctrlKey: true, shiftKey: true }), false), { type: "openFolder" });
 });
 
+test("find maps on both platforms", () => {
+  assert.deepEqual(keyAction(key("f", "KeyF", { metaKey: true }), true), { type: "find" });
+  assert.deepEqual(keyAction(key("F", "KeyF", { ctrlKey: true, shiftKey: true }), false), { type: "find" });
+  assert.equal(keyAction(key("f", "KeyF", { ctrlKey: true }), false), null);
+});
+
 test("Shift+Enter sends ESC CR; plain Enter goes to the shell", () => {
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), true), { type: "send", data: SHIFT_ENTER });
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), false), { type: "send", data: SHIFT_ENTER });

@@ -3,20 +3,30 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { SearchAddon } from "@xterm/addon-search";
 import { closeWindow, fsStat, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
 import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
-import { activeTabId, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { activeTabId, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
 
 type Session = {
   id: number;
   term: Terminal;
   fit: FitAddon;
+  search: SearchAddon;
   el: HTMLElement;
   ptyId: number | null;
 };
+
+/** Output this soon after a keystroke is its echo, not the program working on its own. */
+const ECHO_MS = 250;
+/** A tab is quiet after this long without output. */
+const QUIET_MS = 1500;
+/** Only a tab that was busy at least this long earns the attention dot when it goes quiet. */
+const LONG_RUN_MS = 2000;
 
 export const isMac = navigator.userAgent.includes("Mac");
 
@@ -41,6 +51,8 @@ export type TerminalActions = {
   paste(): void;
   /** Writes raw bytes (such as Shift+Enter's sequence) to the active shell. */
   send(data: string): void;
+  /** Opens the find bar for the active tab's scrollback. */
+  find(): void;
   /** The element holding the terminals, to tell whether a key or drop belongs to them. */
   host: HTMLElement;
   dispose(): void;
@@ -56,8 +68,18 @@ export function mount(root: HTMLElement): TerminalActions {
 
   const active = () => sessions.get(activeTabId.get() ?? -1);
 
+  const search = mountSearch(root, () => {
+    const s = active();
+    return s && { search: s.search, focus: () => s.term.focus() };
+  });
+
+  /** Looking at a tab means it is active and the window has focus. */
+  const looking = (id: number) => activeTabId.get() === id && document.hasFocus();
+
   const activate = (id: number) => {
+    if (activeTabId.get() !== id) search.close();
     activeTabId.set(id);
+    if (tabs.get().find((t) => t.id === id)?.activity === "attention") setTabActivity(id, "idle");
     for (const s of sessions.values()) s.el.hidden = s.id !== id;
     const s = sessions.get(id);
     if (!s) return;
@@ -130,6 +152,11 @@ export function mount(root: HTMLElement): TerminalActions {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
+      if (activeTabId.get() === id) search.showCount(resultIndex, resultCount);
+    });
     term.loadAddon(new WebLinksAddon((_e, uri) => void openUrl(uri)));
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
@@ -142,9 +169,33 @@ export function mount(root: HTMLElement): TerminalActions {
       // No WebGL (e.g. some WebKitGTK setups): xterm keeps its DOM renderer.
     }
 
-    const session: Session = { id, term, fit, el, ptyId: null };
+    const session: Session = { id, term, fit, search: searchAddon, el, ptyId: null };
     sessions.set(id, session);
-    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null }]);
+    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle" }]);
+
+    // Activity marks: busy while the program prints on its own, attention when a long run ends unseen.
+    let lastInput = 0;
+    let busySince = 0;
+    let quietTimer: ReturnType<typeof setTimeout> | undefined;
+    const onOutput = () => {
+      const now = performance.now();
+      if (now - lastInput < ECHO_MS) return;
+      if (tabs.get().find((t) => t.id === id)?.activity !== "busy") {
+        busySince = now;
+        setTabActivity(id, "busy");
+      }
+      clearTimeout(quietTimer);
+      quietTimer = setTimeout(() => {
+        const ranLong = performance.now() - QUIET_MS - busySince >= LONG_RUN_MS;
+        setTabActivity(id, ranLong && !looking(id) ? "attention" : "idle");
+      }, QUIET_MS);
+    };
+    term.onBell(() => {
+      if (!looking(id)) setTabActivity(id, "attention");
+    });
+    term.onData(() => {
+      lastInput = performance.now();
+    });
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
     term.parser.registerOscHandler(7, (data) => {
@@ -156,7 +207,15 @@ export function mount(root: HTMLElement): TerminalActions {
 
     let ptyId: number;
     try {
-      ptyId = await ptySpawn(term.cols, term.rows, (bytes) => term.write(bytes), cwd);
+      ptyId = await ptySpawn(
+        term.cols,
+        term.rows,
+        (bytes) => {
+          term.write(bytes);
+          onOutput();
+        },
+        cwd,
+      );
     } catch (e) {
       term.write(`\r\nCould not start the shell: ${(e as { message?: string }).message ?? e}\r\n`);
       return;
@@ -223,6 +282,13 @@ export function mount(root: HTMLElement): TerminalActions {
     true,
   );
 
+  // Coming back to the window counts as looking at the active tab.
+  const onWindowFocus = () => {
+    const id = activeTabId.get();
+    if (id !== null && tabs.get().find((t) => t.id === id)?.activity === "attention") setTabActivity(id, "idle");
+  };
+  addEventListener("focus", onWindowFocus);
+
   commands.newTab = (cwd) => void create(cwd);
   commands.pasteToTerminal = (text) => active()?.term.paste(text);
 
@@ -248,11 +314,13 @@ export function mount(root: HTMLElement): TerminalActions {
       const s = active();
       if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
     },
+    find: () => search.open(),
     send: (data) => {
       const s = active();
       if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});
     },
     dispose: () => {
+      removeEventListener("focus", onWindowFocus);
       resizeObserver.disconnect();
       void exitListener.then((unlisten) => unlisten());
       void dropListener.then((unlisten) => unlisten());
