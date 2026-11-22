@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ancestors, dirname, findPathLinks, isInside, join, normalize, parseOsc7, resolve, shellQuote } from "./paths.ts";
+import { ancestors, dirname, findPathLinks, isInside, join, lineRef, normalize, parseOsc7, resolve, shellQuote } from "./paths.ts";
 
 test("dirname, join, normalize, resolve", () => {
   assert.equal(dirname("/a/b/c.txt"), "/a/b");
@@ -43,4 +43,13 @@ test("findPathLinks skips URLs, plain words and version numbers", () => {
   assert.deepEqual(paths("hello world"), []);
   assert.deepEqual(paths("node v26.13.1 and 1.2"), []);
   assert.deepEqual(paths("cd .."), []);
+});
+
+test("lineRef", () => {
+  assert.equal(lineRef("/r/src/a.ts", "/r", 3, 7), "src/a.ts:3-7");
+  assert.equal(lineRef("/r/src/a.ts", "/r", 4, 4), "src/a.ts:4");
+  assert.equal(lineRef("/other/a.ts", "/r", 1, 2), "/other/a.ts:1-2");
+  assert.equal(lineRef("/rx/a.ts", "/r", 1, 1), "/rx/a.ts:1");
+  assert.equal(lineRef("/a.ts", "/", 1, 1), "a.ts:1");
+  assert.equal(lineRef("/r/a.ts", null, 1, 1), "/r/a.ts:1");
 });

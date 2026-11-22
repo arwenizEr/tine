@@ -217,6 +217,13 @@ export function mountApp(root: HTMLElement): () => void {
         return term.block(action.direction);
       case "palette":
         return palette.open();
+      case "sendSelection": {
+        // Hands the agent a pointer to the code ("src/a.ts:3-7 "), then lets you type the ask.
+        const ref = viewer.selectionRef();
+        if (!ref) return toast("Select lines in a file or diff first.");
+        commands.pasteToTerminal(`${ref} `);
+        return term.focus();
+      }
     }
   };
 
@@ -228,6 +235,7 @@ export function mountApp(root: HTMLElement): () => void {
     // focus; elsewhere the editor keeps its own Shift+Enter, search and cursor moves.
     const terminalOnly = action.type === "send" || action.type === "find" || action.type === "block";
     if (terminalOnly && !term.host.contains(e.target as Node)) return;
+    if (action.type === "sendSelection" && !side.contains(e.target as Node)) return;
     e.preventDefault();
     e.stopPropagation();
     run(action);

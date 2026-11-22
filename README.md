@@ -38,11 +38,14 @@ It stays small: a Rust core with the system webview, an installer under 20 MB, a
 - **Command blocks:** each command gets a separator with its exit code and duration; jump between them with Cmd+Up / Cmd+Down.
 
 ### Made for watching agents
-- Tabs show a spinner while a program works and a dot when it finishes or rings the bell.
+- Tabs show a spinner while a program works, a dot when it finishes, and a pulsing amber dot when an agent is waiting for your permission.
 - A desktop notification when a task finishes while tine is in the background.
 - **Changes panel:** every changed file with line counts, and its diff, unified or side by side, updating live.
 - **This Turn:** narrows the changes to what happened since your last Enter, so you review only the agent's latest step.
 - **Follow mode:** opens each file's diff the moment the agent edits it.
+- **Point the agent at code:** select lines in a file or diff and press Cmd+L; tine types `src/app.ts:12-18 ` into the terminal so you can add what to do with them.
+
+For the dot and desktop notifications, the agent has to report to the terminal. In Claude Code, open `/config` and set notifications to an iTerm2 option (it sends OSC 9, which tine reads) or to the terminal bell.
 
 ### Files without an IDE
 - The file tree roots itself at the active tab's folder (the git root inside a repo) and updates as files change.
@@ -92,6 +95,7 @@ On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the 
 | Cmd+N / Cmd+O | New file in the current folder / open a folder in a new tab |
 | Cmd+S | Save the open file |
 | Shift+Enter | Newline in agent prompts |
+| Cmd+L | Send the selected lines' location to the terminal (in the viewer) |
 | Cmd+click | Open a file path printed in the terminal |
 | Space | Quick Look the selected file |
 | Cmd+Backspace | Move the selected file to the Trash |

@@ -9,7 +9,7 @@ import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../pat
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { settings } from "../state/settings.ts";
-import { activeTabId, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { activeTabId, type Activity, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
 import { Blocks } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
@@ -26,6 +26,8 @@ type Session = {
 
 /** Output this soon after a keystroke is its echo, not the program working on its own. */
 const ECHO_MS = 250;
+/** Notification text that means "blocked on you", e.g. Claude Code's "needs your permission". */
+const WAITING = /permission|approv|confirm|allow/i;
 /** A tab is quiet after this long without output. */
 const QUIET_MS = 1500;
 /** Only a tab that was busy at least this long earns the attention dot when it goes quiet. */
@@ -60,6 +62,8 @@ export type TerminalActions = {
   block(direction: -1 | 1): void;
   /** Re-reads font and colours (settings or light/dark changed) for every tab. */
   restyle(): void;
+  /** Gives the active tab keyboard focus. */
+  focus(): void;
   /** The element holding the terminals, to tell whether a key or drop belongs to them. */
   host: HTMLElement;
   dispose(): void;
@@ -86,7 +90,7 @@ export function mount(root: HTMLElement): TerminalActions {
   const activate = (id: number) => {
     if (activeTabId.get() !== id) search.close();
     activeTabId.set(id);
-    if (tabs.get().find((t) => t.id === id)?.activity === "attention") setTabActivity(id, "idle");
+    if ((tabs.get().find((t) => t.id === id)?.activity ?? "idle") !== "busy") setTabActivity(id, "idle");
     for (const s of sessions.values()) s.el.hidden = s.id !== id;
     const s = sessions.get(id);
     if (!s) return;
@@ -199,9 +203,9 @@ export function mount(root: HTMLElement): TerminalActions {
     };
     // Bell and OSC 9 are how agents say "done" or "need you": mark the tab, and notify the
     // desktop when tine is in the background.
-    const attention = (message: string) => {
+    const attention = (message: string, activity: Activity = "attention") => {
       if (looking(id)) return;
-      setTabActivity(id, "attention");
+      setTabActivity(id, activity);
       if (!document.hasFocus()) {
         const title = tabs.get().find((t) => t.id === id)?.title || "tine";
         void notify(title, message);
@@ -210,7 +214,8 @@ export function mount(root: HTMLElement): TerminalActions {
     term.onBell(() => attention("Finished, or waiting for you"));
     term.parser.registerOscHandler(9, (data) => {
       // OSC 9;4 is a progress report (ConEmu, Windows Terminal), not a notification.
-      if (!/^4;/.test(data)) attention(data || "Needs your attention");
+      // Agents name a permission prompt in the text; that tab is blocked until you answer.
+      if (!/^4;/.test(data)) attention(data || "Needs your attention", WAITING.test(data) ? "waiting" : "attention");
       return true;
     });
     term.onData((data) => {
@@ -321,7 +326,7 @@ export function mount(root: HTMLElement): TerminalActions {
   // Coming back to the window counts as looking at the active tab.
   const onWindowFocus = () => {
     const id = activeTabId.get();
-    if (id !== null && tabs.get().find((t) => t.id === id)?.activity === "attention") setTabActivity(id, "idle");
+    if (id !== null && (tabs.get().find((t) => t.id === id)?.activity ?? "idle") !== "busy") setTabActivity(id, "idle");
   };
   addEventListener("focus", onWindowFocus);
 
@@ -375,6 +380,7 @@ export function mount(root: HTMLElement): TerminalActions {
       if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
     },
     find: () => search.open(),
+    focus: () => active()?.term.focus(),
     block: (direction) => active()?.blocks.jump(direction),
     restyle: () => {
       const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--mono-font");

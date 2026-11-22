@@ -16,15 +16,28 @@ import {
   openUrl,
   type Stat,
 } from "../ipc.ts";
-import { basename, dirname } from "../paths.ts";
+import { basename, dirname, lineRef } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { activeDocId, docs, focusDoc, jump, openDoc, removeDoc, selected, updateDoc, type Doc } from "../state/files.ts";
 import { repo } from "../state/git.ts";
+import { activeCwd } from "../state/tabs.ts";
 import { toast } from "../ui/toast.ts";
 import { infoCard, loadContent } from "./content.ts";
 import { createState, readOnlyExtensions } from "./editor.ts";
 import { renderFolder } from "./folder.ts";
 import { renderMarkdown } from "./markdown.ts";
+
+/** The focused file or diff editor's selected lines as "path:3-7"; null when none has focus. */
+export function selectionRef(): string | null {
+  const dom = document.activeElement?.closest<HTMLElement>(".cm-editor");
+  const cm = dom && EditorView.findFromDOM(dom);
+  const doc = docs.get().find((d) => d.id === activeDocId.get());
+  if (!cm || !doc || doc.kind === "dir") return null;
+  const { from, to } = cm.state.selection.main;
+  // A selection that ends at the start of a line does not include that line.
+  const last = cm.state.doc.lineAt(to > from ? to - 1 : to).number;
+  return lineRef(doc.path, activeCwd(), cm.state.doc.lineAt(from).number, last);
+}
 
 /** Why a text doc shows the bar above the editor. */
 type Bar = null | "changed" | "conflict" | "deleted";

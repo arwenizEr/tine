@@ -3,9 +3,9 @@ import { signal } from "../signal.ts";
 /**
  * A terminal tab. `cwd` comes from the shell's OSC 7 reports; null until the first prompt.
  * `activity`: busy while output streams, attention when a busy tab went quiet (or rang the
- * bell) while you were looking elsewhere.
+ * bell) while you were looking elsewhere, waiting when a program asked for permission.
  */
-export type Activity = "idle" | "busy" | "attention";
+export type Activity = "idle" | "busy" | "attention" | "waiting";
 export type Tab = { id: number; title: string; cwd: string | null; activity: Activity };
 
 export const tabs = signal<Tab[]>([]);

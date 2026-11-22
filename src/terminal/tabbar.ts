@@ -23,7 +23,7 @@ export function mountTabBar(
         activity.className = `tab-activity ${tab.activity}`;
         if (tab.activity !== "idle") {
           activity.setAttribute("role", "img");
-          activity.setAttribute("aria-label", tab.activity === "busy" ? "working" : "needs attention");
+          activity.setAttribute("aria-label", { busy: "working", attention: "needs attention", waiting: "waiting for you" }[tab.activity]);
         }
         const close = document.createElement("button");
         close.className = "tab-close";

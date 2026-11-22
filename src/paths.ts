@@ -34,6 +34,12 @@ export function ancestors(p: string): string[] {
 
 export const isInside = (dir: string, p: string): boolean => p === dir || p.startsWith(dir === "/" ? "/" : dir + "/");
 
+/** "src/a.ts:3-7" for lines 3–7 of a file, relative to `cwd` when the file is inside it. */
+export function lineRef(path: string, cwd: string | null, from: number, to: number): string {
+  const rel = cwd && cwd !== path && isInside(cwd, path) ? path.slice(cwd === "/" ? 1 : cwd.length + 1) : path;
+  return from === to ? `${rel}:${from}` : `${rel}:${from}-${to}`;
+}
+
 export const extension = (p: string): string => {
   const name = basename(p);
   const i = name.lastIndexOf(".");
