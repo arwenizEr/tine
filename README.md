@@ -109,7 +109,7 @@ App shortcuts can be changed in the settings.
 
 ## Settings
 
-Press **Cmd+,** to change the font, font size, theme and shell; changes apply at once. Everything lives in `~/.config/tine/settings.toml`, created on first start with every option commented out, and you can edit it directly (shortcuts are set only there): open it from the settings window, or with Cmd+P → `> Open Settings File`. Saved changes apply at once.
+Choose **tine → Settings…** in the menu bar (or press Cmd+,) to pick the font, font size, theme and shell from lists; changes apply at once. Everything lives in `~/.config/tine/settings.toml`, created on first start with every option commented out, and you can edit it directly (shortcuts are set only there): open it from the settings window, or with Cmd+P → `> Open Settings File`. Saved changes apply at once.
 
 ```toml
 font_family = "JetBrains Mono, Menlo, monospace"

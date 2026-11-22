@@ -298,6 +298,8 @@ fn macos_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
                 &[
                     &P::about(app, None, None)?,
                     &P::separator(app)?,
+                    &MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
+                    &P::separator(app)?,
                     &P::hide(app, None)?,
                     &P::hide_others(app, None)?,
                     &P::separator(app)?,

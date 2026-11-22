@@ -582,6 +582,11 @@ button {
   gap: 12px;
 }
 
+.settings-modal h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
 .modal select {
   font: 13px var(--ui-font);
   padding: 5px 6px;

@@ -53,7 +53,7 @@ export const ACTIONS = {
 type ActionName = keyof typeof ACTIONS;
 
 // App shortcuts use Cmd on macOS and Ctrl+Shift on Linux; Ctrl alone always goes to the shell.
-// On macOS, copy, paste, New File and Open Folder belong to the native menu, so they have no binding here.
+// On macOS, copy, paste, New File, Open Folder and Settings (Cmd+,) belong to the native menu, so they have no binding here.
 const MAC: Partial<Record<ActionName, string>> = {
   newTab: "cmd+t",
   closeTab: "cmd+w",
@@ -66,7 +66,6 @@ const MAC: Partial<Record<ActionName, string>> = {
   nextBlock: "cmd+down",
   sendSelection: "cmd+l",
   split: "cmd+d",
-  settings: "cmd+,",
 };
 const LINUX: Partial<Record<ActionName, string>> = {
   newTab: "ctrl+shift+t",

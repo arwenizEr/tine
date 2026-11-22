@@ -84,8 +84,6 @@ test("settings overrides rebind, unbind and report mistakes", () => {
   assert.equal(errors.length, 2);
 });
 
-test("Cmd+, opens the settings on macOS", () => {
-  assert.deepEqual(parseChord("cmd+,"), { meta: true, ctrl: false, alt: false, shift: false, key: "," });
-  const e = { key: ",", code: "Comma", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
-  assert.deepEqual(keyAction(e, true), { type: "settings" });
+test("a comma chord parses, for rebinding the settings", () => {
+  assert.deepEqual(parseChord("ctrl+shift+,"), { meta: false, ctrl: true, alt: false, shift: true, key: "," });
 });

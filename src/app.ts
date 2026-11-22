@@ -261,6 +261,7 @@ export function mountApp(root: HTMLElement): () => void {
   const menuListener = onMenu((id) => {
     if (id === "new_file") newFile();
     else if (id === "open_folder") void openFolder();
+    else if (id === "settings") openSettings(openSettingsFile);
   });
 
   const unsubs = [
