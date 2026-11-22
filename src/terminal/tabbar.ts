@@ -45,8 +45,7 @@ export function mountTabBar(
     add.textContent = "+";
     add.setAttribute("aria-label", "New tab");
     add.onclick = () => actions.create();
-    const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙", title: "Settings" });
-    gear.setAttribute("aria-label", "Settings");
+    const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙ Settings" });
     gear.onclick = () => commands.openSettings();
     bar.append(add, gear);
   };
