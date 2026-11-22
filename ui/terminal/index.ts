@@ -5,7 +5,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
-import { toast } from "../ui/toast.ts";
+import { toast } from "../components/toast.ts";
 import { notification } from "./marks.ts";
 import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";

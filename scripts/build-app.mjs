@@ -5,7 +5,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const { productName } = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+const { productName } = JSON.parse(readFileSync("core/tauri.conf.json", "utf8"));
 const env = { ...process.env };
 const args = ["tauri", "build"];
 

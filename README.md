@@ -140,14 +140,14 @@ Requirements:
 ```sh
 npm install
 npm run tauri dev    # development build, reloads on frontend changes
-npm run app          # release bundle in src-tauri/target/release/bundle/
+npm run app          # release bundle in core/target/release/bundle/
 ```
 
 ### Tests
 
 ```sh
 npm run typecheck && npm test                                # frontend
-cd src-tauri && cargo clippy --all-targets && cargo test     # Rust core, against real shells and temporary git repos
+cd core && cargo clippy --all-targets && cargo test          # Rust core, against real shells and temporary git repos
 ```
 
 ### Architecture
@@ -164,21 +164,22 @@ The git panel is read-only by design: tine shows what changed and leaves committ
 
 ### Project layout
 
-The standard [Tauri layout](https://v2.tauri.app/start/project-structure/): the web UI at the top level, the Rust core in `src-tauri/`. They talk only through the commands in `src/ipc.ts` ↔ `src-tauri/src/lib.rs`.
+Two folders, named for what they hold. They talk only through the commands in `ui/ipc.ts` ↔ `core/src/lib.rs`.
 
 ```text
-src/                    UI, TypeScript (runs in the system webview)
-├── app.ts              layout, shortcuts, command palette, settings
-├── ipc.ts              the only file that calls the Rust core
-├── keys.ts paths.ts    shortcuts and path helpers, unit tested (*.test.ts)
+ui/                     interface, TypeScript (runs in the system webview)
+├── main.ts  app.ts     entry; layout, shortcuts, command palette, settings
+├── ipc.ts              the only file that calls the core
+├── keys.ts  paths.ts   shortcuts and path helpers, unit tested (*.test.ts)
 ├── terminal/           tabs, split, command blocks, search
 ├── filetree/           file tree that follows the shell
 ├── git/                Changes panel, This Turn, Follow
 ├── viewer/             file, image, Markdown and diff views, Quick Look
-├── palette/  ui/       command palette, menus, dialogs, settings window
+├── palette/            command palette
+├── components/         menus, dialogs, toasts, settings window
 ├── state/              shared state (signals)
 └── styles/             theme colours and layout
-src-tauri/              core, Rust
+core/                   engine, Rust (a Tauri app; found by its tauri.conf.json)
 ├── src/                PTYs, files, git, watching, settings
 ├── shell-integration/  zsh and bash scripts that report folder and commands
 ├── tauri.conf.json     window, security policy, bundling

@@ -10,9 +10,9 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-NAME="$(node -p "require('./src-tauri/tauri.conf.json').productName") release signing"
+NAME="$(node -p "require('./core/tauri.conf.json').productName") release signing"
 REPO="${1:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
-BACKUP="$HOME/.config/$(node -p "require('./src-tauri/tauri.conf.json').productName")-release-signing"
+BACKUP="$HOME/.config/$(node -p "require('./core/tauri.conf.json').productName")-release-signing"
 
 if [ -e "$BACKUP/cert.p12" ]; then
   echo "A release certificate already exists in $BACKUP; reusing it."

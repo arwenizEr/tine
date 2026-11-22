@@ -36,7 +36,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: src-tauri
+          workspaces: core
 
       - run: npm ci
       - run: npm run typecheck
@@ -44,6 +44,6 @@ jobs:
       # The Tauri build script needs dist/ to exist.
       - run: npm run build
       - run: cargo clippy --all-targets -- -D warnings
-        working-directory: src-tauri
+        working-directory: core
       - run: cargo test
-        working-directory: src-tauri
+        working-directory: core

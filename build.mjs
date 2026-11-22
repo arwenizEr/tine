@@ -1,15 +1,15 @@
-// Bundles src/main.ts (and the CSS it imports) into dist/. `--watch` rebuilds on change.
+// Bundles ui/main.ts (and the CSS it imports) into dist/. `--watch` rebuilds on change.
 import * as esbuild from "esbuild";
 import { copyFile, mkdir } from "node:fs/promises";
 
 const watch = process.argv.includes("--watch");
 
 await mkdir("dist", { recursive: true });
-// shortcut: index.html is copied once per start, restart `npm run tauri dev` after editing it.
-await copyFile("index.html", "dist/index.html");
+// shortcut: ui/index.html is copied once per start, restart `npm run tauri dev` after editing it.
+await copyFile("ui/index.html", "dist/index.html");
 
 const ctx = await esbuild.context({
-  entryPoints: ["src/main.ts"],
+  entryPoints: ["ui/main.ts"],
   bundle: true,
   format: "esm",
   // Language packages load on demand, so each becomes its own chunk.

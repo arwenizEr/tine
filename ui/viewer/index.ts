@@ -20,7 +20,7 @@ import { commands } from "../state/commands.ts";
 import { activeDocId, docs, focusDoc, jump, openDoc, removeDoc, selected, updateDoc, type Doc } from "../state/files.ts";
 import { repo } from "../state/git.ts";
 import { activeCwd } from "../state/tabs.ts";
-import { toast } from "../ui/toast.ts";
+import { toast } from "../components/toast.ts";
 import { infoCard, loadContent } from "./content.ts";
 import { createState, readOnlyExtensions } from "./editor.ts";
 import { renderFolder } from "./folder.ts";

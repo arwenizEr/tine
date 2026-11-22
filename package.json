@@ -8,7 +8,7 @@
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test \"ui/**/*.test.ts\"",
     "tauri": "tauri",
     "app": "node scripts/build-app.mjs"
   },

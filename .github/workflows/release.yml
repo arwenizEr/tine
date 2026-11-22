@@ -21,12 +21,12 @@ jobs:
         include:
           - os: macos-latest
             args: --target universal-apple-darwin --bundles dmg
-            files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            files: core/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           - os: ubuntu-22.04
             args: --bundles appimage,deb
             files: |
-              src-tauri/target/release/bundle/appimage/*.AppImage
-              src-tauri/target/release/bundle/deb/*.deb
+              core/target/release/bundle/appimage/*.AppImage
+              core/target/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
     env:
       # Secrets cannot appear in `if:`; this flag can. Forks have no certificate.
@@ -52,7 +52,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: src-tauri
+          workspaces: core
 
       - run: npm ci
 

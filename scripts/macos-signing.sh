@@ -11,7 +11,7 @@ set -eu
 
 [ "$(uname)" = Darwin ] || { echo "Only needed on macOS."; exit 0; }
 cd "$(dirname "$0")/.."
-NAME="$(node -p "require('./src-tauri/tauri.conf.json').productName") local signing"
+NAME="$(node -p "require('./core/tauri.conf.json').productName") local signing"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
 # Lets Apple's signing tools use the key silently. Without it, recent macOS asks for the

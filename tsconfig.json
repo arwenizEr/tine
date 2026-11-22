@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["ui"],
+  "exclude": ["ui/**/*.test.ts"]
 }

@@ -19,9 +19,9 @@ import { commands } from "../state/commands.ts";
 import { openDoc, quickLook, renamePath, selected, treeRoot } from "../state/files.ts";
 import { gitState, repo } from "../state/git.ts";
 import { activeCwd, activeTabId, tabs } from "../state/tabs.ts";
-import { showMenu, type MenuItem } from "../ui/menu.ts";
-import { promptName } from "../ui/prompt.ts";
-import { toast } from "../ui/toast.ts";
+import { showMenu, type MenuItem } from "../components/menu.ts";
+import { promptName } from "../components/prompt.ts";
+import { toast } from "../components/toast.ts";
 
 type Node = {
   path: string;

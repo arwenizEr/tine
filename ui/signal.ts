@@ -1,4 +1,4 @@
-/** Minimal observable value. All shared state lives in signals under src/state/. */
+/** Minimal observable value. All shared state lives in signals under state/. */
 export type Signal<T> = {
   get(): T;
   set(value: T): void;
