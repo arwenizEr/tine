@@ -13,7 +13,6 @@ import {
   gitDiffFile,
   onFsChanged,
   onGitChanged,
-  openUrl,
   type Stat,
 } from "../ipc.ts";
 import { basename, dirname, lineRef } from "../paths.ts";
@@ -484,15 +483,6 @@ export function mount(parent: HTMLElement): () => void {
       focusDoc.set(null);
       view.focus();
     }
-  };
-
-  // Rendered Markdown links open in the browser; nothing navigates the app's own page.
-  markdownHost.onclick = (e) => {
-    const a = (e.target as HTMLElement).closest("a");
-    if (!a) return;
-    e.preventDefault();
-    const href = a.getAttribute("href");
-    if (href && href !== "#") void openUrl(href);
   };
 
   const unsubs = [

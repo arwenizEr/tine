@@ -5,6 +5,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
+import { toast } from "../ui/toast.ts";
 import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
@@ -26,6 +27,7 @@ type Session = {
 
 /** Output this soon after a keystroke is its echo, not the program working on its own. */
 const ECHO_MS = 250;
+const UNSAFE_NAME = "Not typed into the terminal: the name contains a line break or other control character.";
 /** Notification text that means "blocked on you", e.g. Claude Code's "needs your permission". */
 const WAITING = /permission|approv|confirm|allow/i;
 /** A tab is quiet after this long without output. */
@@ -309,7 +311,9 @@ export function mount(root: HTMLElement): TerminalActions {
   const dropListener = onFileDrop((paths, x, y) => {
     const s = active();
     if (s && host.contains(document.elementFromPoint(x, y))) {
-      s.term.paste(paths.map(shellQuote).join(" ") + " ");
+      const quoted = paths.map(shellQuote);
+      if (quoted.includes(null)) return toast(UNSAFE_NAME);
+      s.term.paste(quoted.join(" ") + " ");
       s.term.focus();
     }
   });
@@ -332,7 +336,9 @@ export function mount(root: HTMLElement): TerminalActions {
       if (!path || !s) return;
       e.preventDefault();
       e.stopPropagation();
-      s.term.paste(shellQuote(path) + " ");
+      const quoted = shellQuote(path);
+      if (quoted === null) return toast(UNSAFE_NAME);
+      s.term.paste(quoted + " ");
       s.term.focus();
     },
     true,
@@ -350,7 +356,9 @@ export function mount(root: HTMLElement): TerminalActions {
 
   commands.cdInTerminal = (dir) => {
     const s = active();
-    return s ? runCommand(s, ` cd -- ${shellQuote(dir)}`) : "No terminal";
+    const quoted = shellQuote(dir);
+    if (quoted === null) return UNSAFE_NAME;
+    return s ? runCommand(s, ` cd -- ${quoted}`) : "No terminal";
   };
 
   // Coming back to the window counts as looking at the active tab.

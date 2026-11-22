@@ -5,7 +5,7 @@ import * as gitPanel from "./git/index.ts";
 import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
-import { dirname } from "./paths.ts";
+import { dirname, hasControlChars } from "./paths.ts";
 import { commands } from "./state/commands.ts";
 import { openDoc, selected, treeRoot } from "./state/files.ts";
 import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/layout.ts";
@@ -230,6 +230,7 @@ export function mountApp(root: HTMLElement): () => void {
         // Hands the agent a pointer to the code ("src/a.ts:3-7 "), then lets you type the ask.
         const ref = viewer.selectionRef();
         if (!ref) return toast("Select lines in a file or diff first.");
+        if (hasControlChars(ref)) return toast("Not sent: the file name contains a control character.");
         commands.pasteToTerminal(`${ref} `);
         return term.focus();
       }

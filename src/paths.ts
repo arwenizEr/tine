@@ -57,8 +57,14 @@ export function parseOsc7(data: string): string | null {
   }
 }
 
-/** Single-quoted for POSIX shells, safe for any file name. */
-export const shellQuote = (p: string): string => `'${p.replaceAll("'", `'\\''`)}'`;
+/** True when `s` holds a control character (newline, ESC, ...) that a terminal would act on. */
+export const hasControlChars = (s: string): boolean => /[\x00-\x1f\x7f]/.test(s);
+
+/**
+ * Single-quoted for POSIX shells. Null for a name with control characters: typed into a
+ * terminal, a newline would run whatever follows it, quotes or not.
+ */
+export const shellQuote = (p: string): string | null => (hasControlChars(p) ? null : `'${p.replaceAll("'", `'\\''`)}'`);
 
 export type PathLink = { start: number; end: number; path: string; line?: number; col?: number };
 

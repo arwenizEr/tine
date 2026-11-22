@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ancestors, dirname, findPathLinks, isInside, join, lineRef, normalize, parseOsc7, resolve, shellQuote } from "./paths.ts";
+import { ancestors, dirname, findPathLinks, hasControlChars, isInside, join, lineRef, normalize, parseOsc7, resolve, shellQuote } from "./paths.ts";
 
 test("dirname, join, normalize, resolve", () => {
   assert.equal(dirname("/a/b/c.txt"), "/a/b");
@@ -26,6 +26,10 @@ test("parseOsc7 decodes the path and ignores the host", () => {
 test("shellQuote survives quotes and spaces", () => {
   assert.equal(shellQuote("/a b/c"), "'/a b/c'");
   assert.equal(shellQuote("/it's"), `'/it'\\''s'`);
+  // A newline would act as Enter in the shell and run the rest of the name.
+  assert.equal(shellQuote("/a\n'; rm -rf ~; '"), null);
+  assert.equal(shellQuote("/a\x1b[2J"), null);
+  assert.ok(hasControlChars("x\ry") && !hasControlChars("/ünïcödé file.txt"));
 });
 
 const paths = (line: string) => findPathLinks(line).map((l) => [l.path, l.line, l.col, line.slice(l.start, l.end)]);
