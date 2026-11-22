@@ -8,6 +8,7 @@
     "core:default",
     "core:window:allow-close",
     "dialog:allow-open",
-    "dialog:allow-ask"
+    "dialog:allow-ask",
+    "notification:default"
   ]
 }

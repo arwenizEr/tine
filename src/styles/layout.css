@@ -206,7 +206,7 @@ button {
 }
 
 .filetree:focus .tree-row.selected {
-  background: #31507f;
+  background: var(--selection-focus);
 }
 
 .tree-row.ignored,
@@ -230,7 +230,7 @@ button {
 }
 
 .tree-icon.dir {
-  background: #6d8fc7;
+  background: var(--folder);
   clip-path: polygon(0 15%, 40% 15%, 50% 28%, 100% 28%, 100% 90%, 0 90%);
 }
 
@@ -355,7 +355,7 @@ button {
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: repeating-conic-gradient(#2a2f39 0 25%, #232831 0 50%) 0 0 / 16px 16px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px;
 }
 
 .doc-image img,
@@ -443,7 +443,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(0 0 0 / 35%);
+  background: var(--scrim);
 }
 
 .quicklook {
@@ -536,7 +536,7 @@ button {
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
-  background: rgb(0 0 0 / 30%);
+  background: var(--scrim);
 }
 
 .modal {
@@ -618,7 +618,7 @@ body {
 
 .tab:not(.active):hover,
 .doc-tab:not(.active):hover {
-  background: rgb(255 255 255 / 4%);
+  background: var(--hover);
   color: var(--fg);
 }
 
@@ -640,7 +640,7 @@ body {
 }
 
 .tree-row:hover {
-  background: rgb(255 255 255 / 5%);
+  background: var(--hover);
 }
 
 .resizer:hover {
@@ -703,18 +703,18 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 10%);
+  background: var(--hover-strong);
   border: 3px solid transparent;
   border-radius: 6px;
   background-clip: padding-box;
 }
 
 :hover::-webkit-scrollbar-thumb {
-  background-color: rgb(255 255 255 / 18%);
+  background-color: var(--fg-muted);
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background-color: rgb(255 255 255 / 28%);
+  background-color: var(--fg);
 }
 
 /* --- Sidebar switch, status bar and git panel --- */
@@ -777,11 +777,11 @@ body {
 }
 
 .git-added-count {
-  color: #98c379;
+  color: var(--git-added);
 }
 
 .git-removed-count {
-  color: #e06c75;
+  color: var(--git-deleted);
 }
 
 .git-panel {
@@ -815,7 +815,7 @@ body {
 
 .git-row:hover,
 .git-row:focus {
-  background: rgb(255 255 255 / 5%);
+  background: var(--hover);
 }
 
 .git-letter {
@@ -873,26 +873,26 @@ body {
 .git-row.git-modified .git-letter,
 .git-typechange .tree-name,
 .git-row.git-typechange .git-letter {
-  color: #e5c07b;
+  color: var(--git-modified);
 }
 
 .git-added .tree-name,
 .git-untracked .tree-name,
 .git-row.git-added .git-letter,
 .git-row.git-untracked .git-letter {
-  color: #98c379;
+  color: var(--git-added);
 }
 
 .git-renamed .tree-name,
 .git-row.git-renamed .git-letter {
-  color: #61afef;
+  color: var(--git-renamed);
 }
 
 .git-deleted .tree-name,
 .git-conflicted .tree-name,
 .git-row.git-deleted .git-letter,
 .git-row.git-conflicted .git-letter {
-  color: #e06c75;
+  color: var(--git-deleted);
 }
 
 .git-row.git-deleted .git-name {
@@ -968,7 +968,7 @@ body {
 
 .tab-activity.attention {
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgb(110 168 254 / 25%);
+  box-shadow: 0 0 0 3px var(--selection);
 }
 
 @keyframes spin {
@@ -1041,13 +1041,13 @@ body {
 
 .block-sep {
   pointer-events: none;
-  border-top: 1px solid rgb(255 255 255 / 9%);
+  border-top: 1px solid var(--hover-strong);
   position: relative;
 }
 
 .block-sep.failed {
-  border-top-color: rgb(224 108 117 / 55%);
-  box-shadow: inset 2px 0 0 #e06c75;
+  border-top-color: var(--git-deleted);
+  box-shadow: inset 2px 0 0 var(--git-deleted);
 }
 
 .block-label {
@@ -1063,7 +1063,7 @@ body {
 }
 
 .block-sep.failed .block-label {
-  color: #e06c75;
+  color: var(--git-deleted);
 }
 
 .git-scope {
@@ -1089,4 +1089,80 @@ body {
 .git-scope button[aria-pressed="true"] {
   background: var(--selection);
   color: var(--fg);
+}
+
+/* --- M5: command palette --- */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: var(--scrim);
+  animation: fade-in 120ms var(--ease);
+}
+
+.palette {
+  width: min(600px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: pop-in 140ms var(--ease);
+}
+
+.palette input {
+  flex: none;
+  font: 14px var(--ui-font);
+  padding: 12px 14px;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+}
+
+.palette-list {
+  overflow: auto;
+  padding: 4px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.palette-item.selected {
+  background: var(--selection);
+}
+
+.palette-label {
+  flex: none;
+}
+
+.palette-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.palette-empty {
+  padding: 12px;
+  color: var(--fg-muted);
+  text-align: center;
 }

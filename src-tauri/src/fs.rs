@@ -87,6 +87,65 @@ pub fn list_dir(path: &Path) -> Result<Vec<Entry>, AppError> {
     Ok(entries)
 }
 
+/// Files under `root` for the command palette: no `.git`, nothing git ignores, symlinks not
+/// followed (no loops). Stops at `limit` files, or after visiting 20x that many entries, so a
+/// huge folder outside any repo (a home folder) cannot stall it. Paths are built on `root`.
+pub fn find_files(root: &Path, limit: usize) -> Result<Vec<String>, AppError> {
+    let base = fs::canonicalize(root)?;
+    let repo = git2::Repository::discover(&base).ok();
+    let workdir = repo
+        .as_ref()
+        .and_then(|r| r.workdir())
+        .and_then(|w| fs::canonicalize(w).ok());
+    let ignored = |path: &Path, dir: bool| match (&repo, &workdir) {
+        (Some(repo), Some(workdir)) => path.strip_prefix(workdir).is_ok_and(|rel| {
+            let rel = rel.to_string_lossy();
+            let rel = if dir {
+                format!("{rel}/")
+            } else {
+                rel.into_owned()
+            };
+            repo.is_path_ignored(rel).unwrap_or(false)
+        }),
+        _ => false,
+    };
+
+    let mut files = Vec::new();
+    let mut stack = vec![base.clone()];
+    let mut visited = 0;
+    'walk: while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            visited += 1;
+            if visited > limit * 20 {
+                break 'walk;
+            }
+            if entry.file_name() == ".git" {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            if kind.is_dir() {
+                if !ignored(&path, true) {
+                    stack.push(path);
+                }
+            } else if kind.is_file() && !ignored(&path, false) {
+                let rel = path.strip_prefix(&base).expect("walk stays under base");
+                files.push(root.join(rel).to_string_lossy().into_owned());
+                if files.len() >= limit {
+                    break 'walk;
+                }
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 #[derive(Serialize, Debug)]
 pub struct FileText {
     pub text: String,
@@ -464,6 +523,28 @@ pub mod tests {
             rename(&t.path("missing"), &t.path("x")).unwrap_err().code,
             "not_found"
         );
+    }
+
+    #[test]
+    fn find_files_skips_git_and_ignored_files() {
+        let t = TempDir::new();
+        git2::Repository::init(&t.0).unwrap();
+        fs::write(t.path(".gitignore"), "node_modules/\n*.log\n").unwrap();
+        fs::create_dir_all(t.path("src/deep")).unwrap();
+        fs::create_dir_all(t.path("node_modules/pkg")).unwrap();
+        fs::write(t.path("src/deep/a.rs"), "").unwrap();
+        fs::write(t.path("src/b.ts"), "").unwrap();
+        fs::write(t.path("node_modules/pkg/index.js"), "").unwrap();
+        fs::write(t.path("debug.log"), "").unwrap();
+
+        let root = t.0.to_string_lossy().into_owned();
+        let found = find_files(&t.0, 100).unwrap();
+        let rel: Vec<_> = found
+            .iter()
+            .map(|p| p.strip_prefix(&root).unwrap())
+            .collect();
+        assert_eq!(rel, ["/.gitignore", "/src/b.ts", "/src/deep/a.rs"]);
+        assert_eq!(find_files(&t.0, 2).unwrap().len(), 2);
     }
 
     #[test]

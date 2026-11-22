@@ -1,6 +1,11 @@
+/* Colours for both themes. Dark is the default; light applies when the desktop is light
+   (theme = "system") or when settings.toml says theme = "light". */
 :root {
+  color-scheme: dark;
   --mono-font: "SF Mono", Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace;
   --ui-font: -apple-system, system-ui, "Segoe UI", Ubuntu, sans-serif;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 120ms;
 
   --bg: #1e222a;
   --bg-raised: #262b35;
@@ -8,15 +13,131 @@
   --fg-muted: #8b93a1;
   --border: #2c313b;
   --accent: #6ea8fe;
+  --on-accent: #0d1420;
   --selection: #2c3a52;
+  --selection-focus: #31507f;
+  --hover: rgb(255 255 255 / 5%);
+  --hover-strong: rgb(255 255 255 / 10%);
   --warning-bg: #4a3b1c;
   --warning-fg: #f3d58c;
   --shadow: 0 10px 34px rgb(0 0 0 / 40%), 0 1px 3px rgb(0 0 0 / 30%);
-  --ease: cubic-bezier(0.2, 0, 0, 1);
-  --fast: 120ms;
+  --scrim: rgb(0 0 0 / 35%);
+  --checker-a: #2a2f39;
+  --checker-b: #232831;
+  --folder: #6d8fc7;
 
   --term-bg: #1e222a;
   --term-fg: #d7dae0;
   --term-cursor: #d7dae0;
   --term-selection: #3e4757;
+
+  --editor-selection: #3e4757;
+  --search-match: rgb(229 192 123 / 25%);
+  --search-match-border: rgb(229 192 123 / 60%);
+
+  --git-modified: #e5c07b;
+  --git-added: #98c379;
+  --git-renamed: #61afef;
+  --git-deleted: #e06c75;
+
+  --syn-keyword: #c678dd;
+  --syn-string: #98c379;
+  --syn-number: #d19a66;
+  --syn-comment: #7f848e;
+  --syn-function: #61afef;
+  --syn-type: #e5c07b;
+  --syn-property: #e06c75;
+  --syn-tag: #e06c75;
+  --syn-definition: #e5e5e5;
+  --syn-invalid: #ff6b6b;
+}
+
+/* The light set appears twice: CSS cannot share one block between a media query and an
+   attribute selector without a build step. Keep the two in sync. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --bg-raised: #f3f4f6;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --border: #dde1e6;
+    --accent: #2f6fdb;
+    --on-accent: #ffffff;
+    --selection: #dbe7fb;
+    --selection-focus: #c3d7f8;
+    --hover: rgb(0 0 0 / 4%);
+    --hover-strong: rgb(0 0 0 / 8%);
+    --warning-bg: #fff4d1;
+    --warning-fg: #6b4e00;
+    --shadow: 0 10px 34px rgb(0 0 0 / 14%), 0 1px 3px rgb(0 0 0 / 10%);
+    --scrim: rgb(0 0 0 / 18%);
+    --checker-a: #f1f2f4;
+    --checker-b: #e6e8eb;
+    --folder: #4f7fd0;
+    --term-bg: #ffffff;
+    --term-fg: #1f2328;
+    --term-cursor: #1f2328;
+    --term-selection: #b9d3fb;
+    --editor-selection: #c8dcfb;
+    --search-match: rgb(255 196 0 / 25%);
+    --search-match-border: rgb(200 150 0 / 60%);
+    --git-modified: #9a6700;
+    --git-added: #1a7f37;
+    --git-renamed: #0969da;
+    --git-deleted: #cf222e;
+    --syn-keyword: #a626a4;
+    --syn-string: #50a14f;
+    --syn-number: #986801;
+    --syn-comment: #8a9199;
+    --syn-function: #4078f2;
+    --syn-type: #b07400;
+    --syn-property: #e45649;
+    --syn-tag: #e45649;
+    --syn-definition: #1f2328;
+    --syn-invalid: #cf222e;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-raised: #f3f4f6;
+  --fg: #1f2328;
+  --fg-muted: #656d76;
+  --border: #dde1e6;
+  --accent: #2f6fdb;
+  --on-accent: #ffffff;
+  --selection: #dbe7fb;
+  --selection-focus: #c3d7f8;
+  --hover: rgb(0 0 0 / 4%);
+  --hover-strong: rgb(0 0 0 / 8%);
+  --warning-bg: #fff4d1;
+  --warning-fg: #6b4e00;
+  --shadow: 0 10px 34px rgb(0 0 0 / 14%), 0 1px 3px rgb(0 0 0 / 10%);
+  --scrim: rgb(0 0 0 / 18%);
+  --checker-a: #f1f2f4;
+  --checker-b: #e6e8eb;
+  --folder: #4f7fd0;
+  --term-bg: #ffffff;
+  --term-fg: #1f2328;
+  --term-cursor: #1f2328;
+  --term-selection: #b9d3fb;
+  --editor-selection: #c8dcfb;
+  --search-match: rgb(255 196 0 / 25%);
+  --search-match-border: rgb(200 150 0 / 60%);
+  --git-modified: #9a6700;
+  --git-added: #1a7f37;
+  --git-renamed: #0969da;
+  --git-deleted: #cf222e;
+  --syn-keyword: #a626a4;
+  --syn-string: #50a14f;
+  --syn-number: #986801;
+  --syn-comment: #8a9199;
+  --syn-function: #4078f2;
+  --syn-type: #b07400;
+  --syn-property: #e45649;
+  --syn-tag: #e45649;
+  --syn-definition: #1f2328;
+  --syn-invalid: #cf222e;
 }

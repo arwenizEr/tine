@@ -2,12 +2,15 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { onMenu, pickFolder } from "./ipc.ts";
-import { keyAction, type KeyAction } from "./keys.ts";
+import { errorMessage, fsWatch, onFsChanged, onMenu, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
+import { mountPalette } from "./palette/index.ts";
+import { dirname } from "./paths.ts";
 import { commands } from "./state/commands.ts";
-import { selected, treeRoot } from "./state/files.ts";
+import { openDoc, selected, treeRoot } from "./state/files.ts";
 import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/layout.ts";
 import { gitState, repo, sidebarView } from "./state/git.ts";
+import { settings, settingsPath } from "./state/settings.ts";
 import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
@@ -127,6 +130,62 @@ export function mountApp(root: HTMLElement): () => void {
     if (dir) commands.newTab(dir);
   };
 
+  const palette = mountPalette(root, () => [
+    { label: "New Tab", run: () => term.newTab() },
+    { label: "Close Tab", run: () => term.closeTab() },
+    { label: "New File…", run: newFile },
+    { label: "Open Folder…", run: () => void openFolder() },
+    { label: "Toggle File Tree", run: () => sidebarVisible.set(!sidebarVisible.get()) },
+    { label: "Toggle Viewer", run: () => viewerVisible.set(!viewerVisible.get()) },
+    { label: "Show Changes", run: () => (sidebarView.set("git"), sidebarVisible.set(true)) },
+    { label: "Toggle Follow Mode", run: () => followMode.set(!followMode.get()) },
+    { label: "Find in Terminal", run: () => term.find() },
+    { label: "Clear Terminal", run: () => term.clear() },
+    {
+      label: "Open Settings",
+      run: () => {
+        const path = settingsPath.get();
+        if (path) openDoc(path, "file", { focus: true });
+        else toast("Settings are not loaded yet.");
+      },
+    },
+  ]);
+
+  // Settings: applied now, and again every time the file is saved.
+  let keymap: Keymap | undefined;
+  const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+  const applySettings = (s: Settings) => {
+    const html = document.documentElement;
+    if (s.theme === "light" || s.theme === "dark") html.dataset.theme = s.theme;
+    else delete html.dataset.theme;
+    if (s.font_family) html.style.setProperty("--mono-font", s.font_family);
+    else html.style.removeProperty("--mono-font");
+    const built = buildKeymap(terminal.isMac, s.keybindings);
+    keymap = built.keymap;
+    for (const error of built.errors) toast(error);
+    term.restyle();
+  };
+  const loadSettings = async () => {
+    try {
+      const { path, settings: s } = await settingsLoad();
+      settingsPath.set(path);
+      settings.set(s);
+    } catch (e) {
+      toast(`Settings not applied: ${errorMessage(e)}`);
+    }
+  };
+  const unsubSettings = watch(settings, applySettings);
+  const onSystemTheme = () => term.restyle();
+  darkQuery.addEventListener("change", onSystemTheme);
+  void loadSettings().then(() => {
+    const path = settingsPath.get();
+    if (path) void fsWatch(dirname(path)).catch(() => {});
+  });
+  const settingsListener = onFsChanged(({ paths }) => {
+    const path = settingsPath.get();
+    if (path && paths.includes(path)) void loadSettings();
+  });
+
   const run = (action: KeyAction) => {
     switch (action.type) {
       case "newTab":
@@ -156,12 +215,14 @@ export function mountApp(root: HTMLElement): () => void {
         return term.find();
       case "block":
         return term.block(action.direction);
+      case "palette":
+        return palette.open();
     }
   };
 
   // Capture phase, so app shortcuts are handled before xterm.js or CodeMirror sees the key.
   const onKeyDown = (e: KeyboardEvent) => {
-    const action = keyAction(e, terminal.isMac);
+    const action = keyAction(e, terminal.isMac, keymap);
     if (!action) return;
     // Shift+Enter's escape sequence, Cmd+F and Cmd+Up/Down are the terminal's only while it has
     // focus; elsewhere the editor keeps its own Shift+Enter, search and cursor moves.
@@ -208,6 +269,9 @@ export function mountApp(root: HTMLElement): () => void {
     disposeQuickLook();
     disposeViewer();
     term.dispose();
+    unsubSettings();
+    darkQuery.removeEventListener("change", onSystemTheme);
+    void settingsListener.then((u) => u());
     stopFollow();
     follow.remove();
     disposeBadge();

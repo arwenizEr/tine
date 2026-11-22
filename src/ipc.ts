@@ -15,6 +15,11 @@ type TauriGlobal = {
   };
   window: { getCurrentWindow(): { close(): Promise<void> } };
   webview: { getCurrentWebview(): { onDragDropEvent(handler: (e: DragDropEvent) => void): Promise<Unlisten> } };
+  notification: {
+    isPermissionGranted(): Promise<boolean>;
+    requestPermission(): Promise<string>;
+    sendNotification(options: { title: string; body: string }): void;
+  };
   dialog: {
     open(options: { directory: boolean }): Promise<string | string[] | null>;
     ask(message: string, options: { title: string; kind: "warning" }): Promise<boolean>;
@@ -78,6 +83,8 @@ export type Stat = { kind: Kind; size: number; mtime: number; item_count?: numbe
 
 export const fsListDir = (path: string) => invoke<Entry[]>("fs_list_dir", { path });
 export const fsReadFile = (path: string) => invoke<FileText>("fs_read_file", { path });
+/** Every file under `root` that git does not ignore (up to 50,000), for the command palette. */
+export const fsFindFiles = (root: string) => invoke<string[]>("fs_find_files", { root });
 export const fsStat = (path: string) => invoke<Stat>("fs_stat", { path });
 export const fsWriteFile = (path: string, text: string, expectedMtime?: number) =>
   invoke<number>("fs_write_file", { path, text, expected_mtime: expectedMtime });
@@ -122,6 +129,19 @@ export const gitChangesSince = (repo: string, base: string) => invoke<GitFile[]>
 export const onGitChanged = (handler: (repo: string) => void) =>
   tauri.event.listen<{ repo: string }>("git-changed", (e) => handler(e.payload.repo));
 
+// --- Settings ---
+
+export type Settings = {
+  font_family?: string;
+  font_size?: number;
+  theme?: "system" | "light" | "dark";
+  shell?: string;
+  keybindings: Record<string, string>;
+};
+
+/** Reads ~/.config/<app>/settings.toml, creating a commented template the first time. */
+export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
+
 // --- App ---
 
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});
@@ -142,5 +162,16 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 export const confirmDialog = (title: string, message: string) => tauri.dialog.ask(message, { title, kind: "warning" });
+
+let notificationsAllowed: Promise<boolean> | null = null;
+/** A desktop notification; macOS asks for permission the first time. */
+export async function notify(title: string, body: string): Promise<void> {
+  const n = tauri.notification;
+  notificationsAllowed ??= n
+    .isPermissionGranted()
+    .then((granted) => granted || n.requestPermission().then((answer) => answer === "granted"))
+    .catch(() => false);
+  if (await notificationsAllowed) n.sendNotification({ title, body });
+}
 
 export const closeWindow = () => tauri.window.getCurrentWindow().close();

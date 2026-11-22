@@ -68,13 +68,17 @@ impl PtyManager {
     /// every 8 ms or 64 KB; `on_exit` runs once, after the last output, with the exit code.
     pub fn spawn(
         &self,
+        shell: Option<String>,
         cwd: Option<String>,
         cols: u16,
         rows: u16,
         on_data: impl FnMut(Vec<u8>) + Send + 'static,
         on_exit: impl FnOnce(u32, Option<i32>) + Send + 'static,
     ) -> Result<u32, AppError> {
-        self.spawn_shell(&default_shell(), cwd, cols, rows, on_data, on_exit)
+        let shell = shell
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(default_shell);
+        self.spawn_shell(&shell, cwd, cols, rows, on_data, on_exit)
     }
 
     fn spawn_shell(
@@ -235,6 +239,7 @@ mod tests {
         let cwd = std::env::temp_dir().to_string_lossy().into_owned();
         let id = mgr
             .spawn(
+                None,
                 Some(cwd),
                 80,
                 24,
@@ -332,12 +337,18 @@ mod tests {
         mgr.write(id, b"cd /usr\r").unwrap();
         let text = wait_for(&out, "/usr\x1b\\");
         assert!(text.contains("\x1b]7;file://"), "no OSC 7 in {text:?}");
-        assert!(text.contains("\x1b]133;A\x07"), "no prompt mark in {text:?}");
+        assert!(
+            text.contains("\x1b]133;A\x07"),
+            "no prompt mark in {text:?}"
+        );
 
         // A failing command: its text, the start mark, then the end mark with exit code 3.
         mgr.write(id, b"(exit 3)\r").unwrap();
         let text = wait_for(&out, "\x1b]133;D;3\x07");
-        assert!(text.contains("\x1b]633;E;(exit 3)\x07\x1b]133;C\x07"), "no command marks in {text:?}");
+        assert!(
+            text.contains("\x1b]633;E;(exit 3)\x07\x1b]133;C\x07"),
+            "no command marks in {text:?}"
+        );
         mgr.kill(id).unwrap();
     }
 

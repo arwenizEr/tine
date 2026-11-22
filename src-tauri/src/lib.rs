@@ -2,6 +2,7 @@ mod error;
 mod fs;
 mod git;
 mod pty;
+mod settings;
 mod watcher;
 
 use error::AppError;
@@ -42,6 +43,21 @@ struct FsChanged {
     paths: Vec<String>,
 }
 
+fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
+    settings::default_path(&app.package_info().name)
+        .ok_or_else(|| AppError::new("io", "HOME is not set"))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn settings_load(app: AppHandle) -> Result<settings::Loaded, AppError> {
+    let path = settings_path(&app)?;
+    let settings = settings::load(&path)?;
+    Ok(settings::Loaded {
+        path: path.to_string_lossy().into_owned(),
+        settings,
+    })
+}
+
 // Commands are async so slow disk or PTY work never stalls the main (UI) thread.
 #[tauri::command(rename_all = "snake_case")]
 async fn pty_spawn(
@@ -52,7 +68,13 @@ async fn pty_spawn(
     rows: u16,
     on_data: Channel<Response>,
 ) -> Result<u32, AppError> {
+    // A broken settings file must not stop shells from starting: fall back to $SHELL.
+    let shell = settings_path(&app)
+        .ok()
+        .and_then(|p| settings::load(&p).ok())
+        .and_then(|s| s.shell);
     ptys.spawn(
+        shell,
         cwd,
         cols,
         rows,
@@ -88,6 +110,12 @@ async fn pty_kill(ptys: State<'_, PtyManager>, pty_id: u32) -> Result<(), AppErr
 #[tauri::command(rename_all = "snake_case")]
 async fn fs_list_dir(path: String) -> Result<Vec<fs::Entry>, AppError> {
     fs::list_dir(abs(&path)?)
+}
+
+/// For the command palette: every file under `root` that git does not ignore, up to 50,000.
+#[tauri::command(rename_all = "snake_case")]
+async fn fs_find_files(root: String) -> Result<Vec<String>, AppError> {
+    fs::find_files(abs(&root)?, 50_000)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -269,6 +297,7 @@ fn macos_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app.path().app_cache_dir()?.join("shell-integration");
             // Without the scripts the shells still start, just without OSC 7.
@@ -302,6 +331,7 @@ pub fn run() {
             pty_resize,
             pty_kill,
             fs_list_dir,
+            fs_find_files,
             fs_read_file,
             fs_stat,
             fs_write_file,
@@ -316,6 +346,7 @@ pub fn run() {
             git_diff_file,
             git_snapshot,
             git_changes_since,
+            settings_load,
             open_url
         ]);
     #[cfg(target_os = "macos")]

@@ -4,10 +4,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
-import { closeWindow, fsStat, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
+import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
 import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
+import { settings } from "../state/settings.ts";
 import { activeTabId, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
 import { Blocks } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
@@ -57,6 +58,8 @@ export type TerminalActions = {
   find(): void;
   /** Scrolls to the previous (-1) or next (1) command block. */
   block(direction: -1 | 1): void;
+  /** Re-reads font and colours (settings or light/dark changed) for every tab. */
+  restyle(): void;
   /** The element holding the terminals, to tell whether a key or drop belongs to them. */
   host: HTMLElement;
   dispose(): void;
@@ -150,7 +153,7 @@ export function mount(root: HTMLElement): TerminalActions {
       cursorBlink: true,
       scrollback: 10_000,
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono-font"),
-      fontSize: 13,
+      fontSize: settings.get().font_size ?? 13,
       theme: themeFromCss(),
       linkHandler: { activate: (_e, uri) => void openUrl(uri) }, // OSC 8 links
     });
@@ -194,8 +197,21 @@ export function mount(root: HTMLElement): TerminalActions {
         setTabActivity(id, ranLong && !looking(id) ? "attention" : "idle");
       }, QUIET_MS);
     };
-    term.onBell(() => {
-      if (!looking(id)) setTabActivity(id, "attention");
+    // Bell and OSC 9 are how agents say "done" or "need you": mark the tab, and notify the
+    // desktop when tine is in the background.
+    const attention = (message: string) => {
+      if (looking(id)) return;
+      setTabActivity(id, "attention");
+      if (!document.hasFocus()) {
+        const title = tabs.get().find((t) => t.id === id)?.title || "tine";
+        void notify(title, message);
+      }
+    };
+    term.onBell(() => attention("Finished, or waiting for you"));
+    term.parser.registerOscHandler(9, (data) => {
+      // OSC 9;4 is a progress report (ConEmu, Windows Terminal), not a notification.
+      if (!/^4;/.test(data)) attention(data || "Needs your attention");
+      return true;
     });
     term.onData((data) => {
       lastInput = performance.now();
@@ -211,16 +227,16 @@ export function mount(root: HTMLElement): TerminalActions {
     term.registerLinkProvider(pathLinkProvider(session));
 
     let ptyId: number;
+    const onBytes = (bytes: Uint8Array) => {
+      term.write(bytes);
+      onOutput();
+    };
     try {
-      ptyId = await ptySpawn(
-        term.cols,
-        term.rows,
-        (bytes) => {
-          term.write(bytes);
-          onOutput();
-        },
-        cwd,
-      );
+      // A restored folder may be gone by now: start in the home folder instead.
+      ptyId = await ptySpawn(term.cols, term.rows, onBytes, cwd).catch((e) => {
+        if (!cwd) throw e;
+        return ptySpawn(term.cols, term.rows, onBytes);
+      });
     } catch (e) {
       term.write(`\r\nCould not start the shell: ${(e as { message?: string }).message ?? e}\r\n`);
       return;
@@ -312,7 +328,31 @@ export function mount(root: HTMLElement): TerminalActions {
   commands.newTab = (cwd) => void create(cwd);
   commands.pasteToTerminal = (text) => active()?.term.paste(text);
 
-  void create();
+  // Restore tabs: the same folders as last time (the programs that ran there are not restarted).
+  const SAVED = "tabs";
+  type Saved = { cwds: (string | null)[]; active: number };
+  const save = () => {
+    const list = tabs.get();
+    const saved: Saved = { cwds: list.map((t) => t.cwd), active: list.findIndex((t) => t.id === activeTabId.get()) };
+    try {
+      localStorage.setItem(SAVED, JSON.stringify(saved));
+    } catch {
+      // Storage unavailable: tabs simply are not restored next time.
+    }
+  };
+  let saved: Saved | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(SAVED) ?? "null");
+  } catch {
+    saved = null;
+  }
+  const restore = saved?.cwds.length ? saved : { cwds: [null], active: 0 };
+  const unsubSave: (() => void)[] = [];
+  void Promise.all(restore.cwds.map((cwd) => create(cwd ?? undefined))).then(() => {
+    const tab = tabs.get()[restore.active];
+    if (tab) activate(tab.id);
+    unsubSave.push(tabs.subscribe(save), activeTabId.subscribe(save));
+  });
 
   return {
     host,
@@ -336,11 +376,23 @@ export function mount(root: HTMLElement): TerminalActions {
     },
     find: () => search.open(),
     block: (direction) => active()?.blocks.jump(direction),
+    restyle: () => {
+      const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--mono-font");
+      const fontSize = settings.get().font_size ?? 13;
+      const theme = themeFromCss();
+      for (const s of sessions.values()) {
+        s.term.options.fontFamily = fontFamily;
+        s.term.options.fontSize = fontSize;
+        s.term.options.theme = theme;
+      }
+      active()?.fit.fit();
+    },
     send: (data) => {
       const s = active();
       if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});
     },
     dispose: () => {
+      unsubSave.forEach((u) => u());
       removeEventListener("focus", onWindowFocus);
       resizeObserver.disconnect();
       void exitListener.then((unlisten) => unlisten());

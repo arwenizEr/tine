@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { keyAction, SHIFT_ENTER, type KeyLike } from "./keys.ts";
+import { buildKeymap, keyAction, parseChord, SHIFT_ENTER, type KeyLike } from "./keys.ts";
 
 const key = (k: string, code: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key: k,
@@ -60,4 +60,26 @@ test("Shift+Enter sends ESC CR; plain Enter goes to the shell", () => {
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), true), { type: "send", data: SHIFT_ENTER });
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), false), { type: "send", data: SHIFT_ENTER });
   assert.equal(keyAction(key("Enter", "Enter"), true), null);
+});
+
+test("palette is Cmd+P / Ctrl+Shift+P", () => {
+  assert.deepEqual(keyAction(key("p", "KeyP", { metaKey: true }), true), { type: "palette" });
+  assert.deepEqual(keyAction(key("P", "KeyP", { ctrlKey: true, shiftKey: true }), false), { type: "palette" });
+});
+
+test("parseChord accepts modifiers plus one key and needs Cmd or Ctrl", () => {
+  assert.deepEqual(parseChord("cmd+shift+T"), { meta: true, ctrl: false, alt: false, shift: true, key: "t" });
+  assert.deepEqual(parseChord("ctrl + up"), { meta: false, ctrl: true, alt: false, shift: false, key: "up" });
+  assert.equal(parseChord("shift+t"), null);
+  assert.equal(parseChord("cmd+hyper+t"), null);
+  assert.equal(parseChord("cmd+tab"), null);
+});
+
+test("settings overrides rebind, unbind and report mistakes", () => {
+  const { keymap, errors } = buildKeymap(true, { newTab: "cmd+shift+n", clear: "none", nope: "cmd+x", find: "f" });
+  assert.deepEqual(keyAction(key("n", "KeyN", { metaKey: true, shiftKey: true }), true, keymap), { type: "newTab" });
+  assert.equal(keyAction(key("t", "KeyT", { metaKey: true }), true, keymap), null);
+  assert.equal(keyAction(key("k", "KeyK", { metaKey: true }), true, keymap), null);
+  assert.deepEqual(keyAction(key("f", "KeyF", { metaKey: true }), true, keymap), { type: "find" });
+  assert.equal(errors.length, 2);
 });
