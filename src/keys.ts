@@ -16,6 +16,7 @@ export type KeyAction =
   | { type: "block"; direction: -1 | 1 }
   | { type: "sendSelection" }
   | { type: "split" }
+  | { type: "settings" }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -47,6 +48,7 @@ export const ACTIONS = {
   nextBlock: { type: "block", direction: 1 },
   sendSelection: { type: "sendSelection" },
   split: { type: "split" },
+  settings: { type: "settings" },
 } satisfies Record<string, KeyAction>;
 type ActionName = keyof typeof ACTIONS;
 
@@ -64,6 +66,7 @@ const MAC: Partial<Record<ActionName, string>> = {
   nextBlock: "cmd+down",
   sendSelection: "cmd+l",
   split: "cmd+d",
+  settings: "cmd+,",
 };
 const LINUX: Partial<Record<ActionName, string>> = {
   newTab: "ctrl+shift+t",
@@ -89,7 +92,7 @@ type Chord = { meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; key: 
 export function parseChord(text: string): Chord | null {
   const parts = text.toLowerCase().split("+").map((p) => p.trim());
   const key = parts.pop();
-  if (!key || !/^([a-z0-9]|up|down)$/.test(key)) return null;
+  if (!key || !/^([a-z0-9,]|up|down)$/.test(key)) return null;
   const chord: Chord = { meta: false, ctrl: false, alt: false, shift: false, key };
   for (const mod of parts) {
     if (mod === "cmd" || mod === "meta") chord.meta = true;

@@ -83,3 +83,9 @@ test("settings overrides rebind, unbind and report mistakes", () => {
   assert.deepEqual(keyAction(key("f", "KeyF", { metaKey: true }), true, keymap), { type: "find" });
   assert.equal(errors.length, 2);
 });
+
+test("Cmd+, opens the settings on macOS", () => {
+  assert.deepEqual(parseChord("cmd+,"), { meta: true, ctrl: false, alt: false, shift: false, key: "," });
+  const e = { key: ",", code: "Comma", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
+  assert.deepEqual(keyAction(e, true), { type: "settings" });
+});

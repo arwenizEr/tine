@@ -145,6 +145,9 @@ export type Settings = {
 /** Reads ~/.config/<app>/settings.toml, creating a commented template the first time. */
 export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
 
+/** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
+export const settingsSet = (key: string, value: string | number | null) => invoke<Settings>("settings_set", { key, value });
+
 // --- App ---
 
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});

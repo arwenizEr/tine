@@ -58,6 +58,15 @@ async fn settings_load(app: AppHandle) -> Result<settings::Loaded, AppError> {
     })
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn settings_set(
+    app: AppHandle,
+    key: String,
+    value: Option<toml::Value>,
+) -> Result<settings::Settings, AppError> {
+    settings::set(&settings_path(&app)?, &key, value.as_ref())
+}
+
 // Commands are async so slow disk or PTY work never stalls the main (UI) thread.
 #[tauri::command(rename_all = "snake_case")]
 async fn pty_spawn(
@@ -358,6 +367,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             full_disk_access,
             log_error,
+            settings_set,
             open_full_disk_access_settings,
             pty_spawn,
             pty_write,

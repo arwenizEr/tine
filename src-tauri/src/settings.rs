@@ -37,7 +37,7 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
-#          find, palette, copy, paste, prevBlock, nextBlock
+#          find, palette, copy, paste, prevBlock, nextBlock, sendSelection, split, settings
 [keybindings]
 # newTab = "cmd+t"
 # palette = "cmd+p"
@@ -67,8 +67,12 @@ pub fn load(path: &Path) -> Result<Settings, AppError> {
         }
         Err(e) => return Err(e.into()),
     };
+    parse(&text)
+}
+
+fn parse(text: &str) -> Result<Settings, AppError> {
     let settings: Settings =
-        toml::from_str(&text).map_err(|e| AppError::new("invalid_settings", e.message()))?;
+        toml::from_str(text).map_err(|e| AppError::new("invalid_settings", e.message()))?;
     if let Some(theme) = &settings.theme
         && !["system", "light", "dark"].contains(&theme.as_str())
     {
@@ -86,6 +90,60 @@ pub fn load(path: &Path) -> Result<Settings, AppError> {
         ));
     }
     Ok(settings)
+}
+
+/// Top-level keys the settings window may change; keybindings stay a file-only setting.
+const EDITABLE: [&str; 4] = ["font_family", "font_size", "theme", "shell"];
+
+/// Sets one top-level setting in the file, or comments it out (back to the default) when
+/// `value` is None. Edits the line in place so the user's comments and layout survive, and
+/// refuses a result that would not load.
+pub fn set(path: &Path, key: &str, value: Option<&toml::Value>) -> Result<Settings, AppError> {
+    if !EDITABLE.contains(&key) {
+        return Err(AppError::new("invalid", format!("{key} cannot be set here")));
+    }
+    load(path)?; // creates the template on first use
+    let text = std::fs::read_to_string(path)?;
+    let next = set_line(&text, key, value.map(|v| format!("{key} = {v}")));
+    let settings = parse(&next)?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, &next)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(settings)
+}
+
+/// Replaces `key`'s line in the top-level table (before the first `[table]`), preferring an
+/// active line over a commented-out one. None comments the active line out.
+fn set_line(text: &str, key: &str, line: Option<String>) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let top = lines
+        .iter()
+        .position(|l| l.trim_start().starts_with('['))
+        .unwrap_or(lines.len());
+    let assigns = |l: &str, commented: bool| {
+        let l = l.trim_start();
+        let l = if commented {
+            match l.strip_prefix('#') {
+                Some(rest) => rest.trim_start(),
+                None => return false,
+            }
+        } else {
+            l
+        };
+        l.strip_prefix(key)
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    };
+    let active = (0..top).find(|&i| assigns(&lines[i], false));
+    let commented = (0..top).find(|&i| assigns(&lines[i], true));
+    match (line, active, commented) {
+        (Some(new), Some(i), _) | (Some(new), None, Some(i)) => lines[i] = new,
+        (Some(new), None, None) => lines.insert(top, new),
+        (None, Some(i), _) => lines[i] = format!("# {}", lines[i].trim_start()),
+        (None, None, _) => {}
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]
@@ -121,6 +179,42 @@ mod tests {
             s.keybindings.get("newTab").map(String::as_str),
             Some("cmd+shift+n")
         );
+    }
+
+    #[test]
+    fn set_edits_in_place_and_keeps_comments_and_keybindings() {
+        let t = TempDir::new();
+        let path = t.path("settings.toml");
+        load(&path).unwrap(); // template
+        let s = set(&path, "theme", Some(&toml::Value::String("light".into()))).unwrap();
+        assert_eq!(s.theme.as_deref(), Some("light"));
+        set(&path, "font_size", Some(&toml::Value::Integer(15))).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("theme = \"light\"") && !text.contains("# theme = \"system\""));
+        assert!(text.contains("font_size = 15") && text.contains("# newTab = \"cmd+t\""));
+        assert_eq!(text.matches("theme =").count(), 1);
+
+        // Back to the default: the line is commented out, not deleted.
+        let s = set(&path, "theme", None).unwrap();
+        assert_eq!(s.theme, None);
+        assert!(std::fs::read_to_string(&path).unwrap().contains("# theme = \"light\""));
+
+        // A key the file has never mentioned goes above the first table.
+        std::fs::write(&path, "[keybindings]\nnewTab = \"cmd+t\"\n").unwrap();
+        set(&path, "shell", Some(&toml::Value::String("/bin/bash".into()))).unwrap();
+        let s = load(&path).unwrap();
+        assert_eq!(s.shell.as_deref(), Some("/bin/bash"));
+        assert_eq!(s.keybindings.len(), 1);
+    }
+
+    #[test]
+    fn set_refuses_bad_values_and_unknown_keys_without_writing() {
+        let t = TempDir::new();
+        let path = t.path("settings.toml");
+        std::fs::write(&path, "font_size = 14\n").unwrap();
+        assert!(set(&path, "font_size", Some(&toml::Value::Integer(500))).is_err());
+        assert!(set(&path, "keybindings", None).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "font_size = 14\n");
     }
 
     #[test]

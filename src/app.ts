@@ -14,6 +14,7 @@ import { settings, settingsPath } from "./state/settings.ts";
 import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
+import { openSettings } from "./ui/settings.ts";
 import { toast } from "./ui/toast.ts";
 import * as viewer from "./viewer/index.ts";
 import * as quicklook from "./viewer/quicklook.ts";
@@ -130,6 +131,12 @@ export function mountApp(root: HTMLElement): () => void {
     if (dir) commands.newTab(dir);
   };
 
+  const openSettingsFile = () => {
+    const path = settingsPath.get();
+    if (path) openDoc(path, "file", { focus: true });
+    else toast("Settings are not loaded yet.");
+  };
+
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
     { label: "Close Tab", run: () => term.closeTab() },
@@ -143,14 +150,8 @@ export function mountApp(root: HTMLElement): () => void {
     { label: "Find in Terminal", run: () => term.find() },
     { label: "Clear Terminal", run: () => term.clear() },
     ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
-    {
-      label: "Open Settings",
-      run: () => {
-        const path = settingsPath.get();
-        if (path) openDoc(path, "file", { focus: true });
-        else toast("Settings are not loaded yet.");
-      },
-    },
+    { label: "Settings…", run: () => openSettings(openSettingsFile) },
+    { label: "Open Settings File", run: openSettingsFile },
   ]);
 
   // Settings: applied now, and again every time the file is saved.
@@ -221,6 +222,8 @@ export function mountApp(root: HTMLElement): () => void {
         return palette.open();
       case "split":
         return term.split();
+      case "settings":
+        return openSettings(openSettingsFile);
       case "sendSelection": {
         // Hands the agent a pointer to the code ("src/a.ts:3-7 "), then lets you type the ask.
         const ref = viewer.selectionRef();

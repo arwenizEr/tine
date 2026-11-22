@@ -98,6 +98,7 @@ On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the 
 | Cmd+B / Cmd+J | Toggle the file tree / the viewer |
 | Cmd+N / Cmd+O | New file in the current folder / open a folder in a new tab |
 | Cmd+S | Save the open file |
+| Cmd+, | Settings |
 | Shift+Enter | Newline in agent prompts |
 | Cmd+L | Send the selected lines' location to the terminal (in the viewer) |
 | Cmd+click | Open a file path printed in the terminal |
@@ -108,7 +109,7 @@ App shortcuts can be changed in the settings.
 
 ## Settings
 
-Settings live in `~/.config/tine/settings.toml`, created on first start with every option commented out. Edit it in any editor, or open it in tine with Cmd+P → `> Open Settings`. Changes apply as soon as you save.
+Press **Cmd+,** to change the font, font size, theme and shell; changes apply at once. Everything lives in `~/.config/tine/settings.toml`, created on first start with every option commented out, and you can edit it directly (shortcuts are set only there): open it from the settings window, or with Cmd+P → `> Open Settings File`. Saved changes apply at once.
 
 ```toml
 font_family = "JetBrains Mono, Menlo, monospace"
