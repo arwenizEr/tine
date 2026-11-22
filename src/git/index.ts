@@ -156,7 +156,7 @@ export function mount(parent: HTMLElement): () => void {
       const since = new Date(t.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       if (!files) return panel.replaceChildren();
       return panel.replaceChildren(
-        files.length ? section(`Since ${since}`, files, r, t.base) : empty(`No changes since ${since}`),
+        files.length ? section(`Since ${since}`, files, r, t.base) : empty(`No changes since ${since}. Files ignored by git (dimmed in the tree) are not listed.`),
       );
     }
     const staged = st.files.filter((f) => f.staged);
