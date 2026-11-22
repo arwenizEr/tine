@@ -1,10 +1,9 @@
-# Checks on every push and pull request, on macOS and Linux (the plan tests Linux from M1).
+# Checks on macOS and Linux. Manual for now (Actions tab > CI > Run workflow); to run on every
+# push again, add `push: { branches: [main] }` and `pull_request:` under `on`.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

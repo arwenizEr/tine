@@ -93,7 +93,6 @@ npm run typecheck && npm test                          # TypeScript and frontend
 cd src-tauri && cargo clippy --all-targets && cargo test   # Rust core, against real shells and temporary git repos
 ```
 
-`PLAN.md` is the design document: architecture, the IPC contract between the frontend and the Rust core, milestones and the list of ideas.
 
 ## License
 
