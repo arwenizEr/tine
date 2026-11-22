@@ -110,10 +110,7 @@ export function mount(parent: HTMLElement): () => void {
   header.className = "filetree-header";
   const headerName = document.createElement("span");
   headerName.className = "filetree-name";
-  const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙", title: "Settings" });
-  gear.setAttribute("aria-label", "Settings");
-  gear.onclick = () => commands.openSettings();
-  header.append(headerName, gear);
+  header.append(headerName);
   const el = document.createElement("div");
   el.className = "filetree";
   el.tabIndex = 0;

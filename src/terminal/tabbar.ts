@@ -1,3 +1,4 @@
+import { commands } from "../state/commands.ts";
 import { activeTabId, splitPair, tabs } from "../state/tabs.ts";
 
 /** Renders the tab strip from state; clicks call back into the terminal panel. */
@@ -44,7 +45,10 @@ export function mountTabBar(
     add.textContent = "+";
     add.setAttribute("aria-label", "New tab");
     add.onclick = () => actions.create();
-    bar.append(add);
+    const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙", title: "Settings" });
+    gear.setAttribute("aria-label", "Settings");
+    gear.onclick = () => commands.openSettings();
+    bar.append(add, gear);
   };
 
   const unsubs = [tabs.subscribe(render), activeTabId.subscribe(render), splitPair.subscribe(render)];
