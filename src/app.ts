@@ -37,7 +37,7 @@ function resizer(panel: HTMLElement, side: 1 | -1): HTMLElement {
   return handle;
 }
 
-/** Sidebar switch between the file tree and the git panel; Changes only shows inside a repo. */
+/** Sidebar switch between the file tree and the git panel; shown only inside a repo. */
 function sidebarSwitch(parent: HTMLElement): () => void {
   const bar = document.createElement("div");
   bar.className = "sidebar-switch";
@@ -54,7 +54,8 @@ function sidebarSwitch(parent: HTMLElement): () => void {
     if (!repo.get() && sidebarView.get() === "git") sidebarView.set("files");
     const n = new Set(gitState.get()?.files.map((f) => f.path)).size;
     changes.textContent = n ? `Changes (${n})` : "Changes";
-    changes.hidden = !repo.get();
+    // With one view there is nothing to switch: outside a repo the bar goes away entirely.
+    bar.hidden = !repo.get();
     files.setAttribute("aria-selected", String(sidebarView.get() === "files"));
     changes.setAttribute("aria-selected", String(sidebarView.get() === "git"));
   };
