@@ -64,13 +64,13 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 
 Download the latest build from [Releases](../../releases).
 
-**macOS** (Apple Silicon and Intel): `tine_<version>_universal.dmg`. Drag tine to Applications. The build is signed but not notarized, so the first launch needs one confirmation: open tine, then choose **Open Anyway** in System Settings → Privacy & Security. Or run:
+**macOS** (Apple Silicon and Intel): `tine_<version>_universal.dmg`. Drag tine to Applications. The build is not notarized, so the first launch needs one confirmation: open tine, then choose **Open Anyway** in System Settings → Privacy & Security. Or run:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/tine.app
 ```
 
-On first start, tine offers to open **Full Disk Access** in System Settings. Turn tine on there once, and macOS stops asking separately for Desktop, Documents, Downloads and other folders, for tine and every command you run in it. Every release is signed with the same certificate, so the permission stays across updates. You can also find it later in the command palette: `> Allow Full Disk Access`.
+On first start, tine offers to open **Full Disk Access** in System Settings. Turn tine on there once, and macOS stops asking separately for Desktop, Documents, Downloads and other folders, for tine and every command you run in it. You can also find it later in the command palette: `> Allow Full Disk Access`.
 
 **Linux** (x86-64):
 
