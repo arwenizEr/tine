@@ -162,6 +162,31 @@ cd src-tauri && cargo clippy --all-targets && cargo test     # Rust core, agains
 
 The git panel is read-only by design: tine shows what changed and leaves committing to you and your tools.
 
+### Project layout
+
+The standard [Tauri layout](https://v2.tauri.app/start/project-structure/): the web UI at the top level, the Rust core in `src-tauri/`. They talk only through the commands in `src/ipc.ts` ↔ `src-tauri/src/lib.rs`.
+
+```text
+src/                    UI, TypeScript (runs in the system webview)
+├── app.ts              layout, shortcuts, command palette, settings
+├── ipc.ts              the only file that calls the Rust core
+├── keys.ts paths.ts    shortcuts and path helpers, unit tested (*.test.ts)
+├── terminal/           tabs, split, command blocks, search
+├── filetree/           file tree that follows the shell
+├── git/                Changes panel, This Turn, Follow
+├── viewer/             file, image, Markdown and diff views, Quick Look
+├── palette/  ui/       command palette, menus, dialogs, settings window
+├── state/              shared state (signals)
+└── styles/             theme colours and layout
+src-tauri/              core, Rust
+├── src/                PTYs, files, git, watching, settings
+├── shell-integration/  zsh and bash scripts that report folder and commands
+├── tauri.conf.json     window, security policy, bundling
+└── icons/              app icons, generated from docs/logo.svg
+scripts/                build and signing helpers
+docs/                   logo
+```
+
 ## Contributing
 
 Issues and pull requests are welcome. Run the tests above before opening a pull request and keep each change focused. For a larger feature, open an issue first so we can agree on the approach: tine aims to stay small.

@@ -20,8 +20,8 @@ struct Session {
 
 type Sessions = Arc<Mutex<HashMap<u32, Arc<Session>>>>;
 
-const ZSH_INTEGRATION: &str = include_str!("../../shell-integration/integration.zsh");
-const BASH_INTEGRATION: &str = include_str!("../../shell-integration/integration.bash");
+const ZSH_INTEGRATION: &str = include_str!("../shell-integration/integration.zsh");
+const BASH_INTEGRATION: &str = include_str!("../shell-integration/integration.bash");
 
 /// Writes the shell integration scripts into `dir`: zsh needs its file named `.zshenv`
 /// inside the folder that becomes ZDOTDIR.
