@@ -332,6 +332,12 @@ mod tests {
         mgr.write(id, b"cd /usr\r").unwrap();
         let text = wait_for(&out, "/usr\x1b\\");
         assert!(text.contains("\x1b]7;file://"), "no OSC 7 in {text:?}");
+        assert!(text.contains("\x1b]133;A\x07"), "no prompt mark in {text:?}");
+
+        // A failing command: its text, the start mark, then the end mark with exit code 3.
+        mgr.write(id, b"(exit 3)\r").unwrap();
+        let text = wait_for(&out, "\x1b]133;D;3\x07");
+        assert!(text.contains("\x1b]633;E;(exit 3)\x07\x1b]133;C\x07"), "no command marks in {text:?}");
         mgr.kill(id).unwrap();
     }
 

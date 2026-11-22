@@ -122,7 +122,7 @@ export function mount(parent: HTMLElement): () => void {
     const prev = loaded.get(doc.id);
     if (!r) return void loaded.set(doc.id, { kind: "error", message: "Not in a git repository." });
     try {
-      const d = await gitDiffFile(r, doc.path, doc.staged);
+      const d = await gitDiffFile(r, doc.path, doc.staged, doc.base);
       if (!docOf(doc.id)) return;
       if (prev?.kind === "diff" && prev.old === d.old_text && prev.new === d.new_text) return;
       const version = prev?.kind === "diff" ? prev.version + 1 : 0;
@@ -264,7 +264,8 @@ export function mount(parent: HTMLElement): () => void {
         const tab = el("div", "doc-tab" + (doc.id === active ? " active" : "") + (doc.preview ? " preview" : ""));
         tab.title = doc.path;
         const name = el("span", "doc-tab-name");
-        name.textContent = (basename(doc.path) || doc.path) + (doc.kind === "diff" ? (doc.staged ? " (staged)" : " (diff)") : "");
+        const diffLabel = doc.base ? " (this turn)" : doc.staged ? " (staged)" : " (diff)";
+        name.textContent = (basename(doc.path) || doc.path) + (doc.kind === "diff" ? diffLabel : "");
         tab.append(name);
         if (doc.dirty) {
           const dot = el("span", "doc-dirty");
@@ -280,7 +281,7 @@ export function mount(parent: HTMLElement): () => void {
           void closeDoc(doc.id);
         };
         tab.onclick = () => activeDocId.set(doc.id);
-        tab.ondblclick = () => openDoc(doc.path, doc.kind, { staged: doc.staged }); // pins a preview
+        tab.ondblclick = () => openDoc(doc.path, doc.kind, { staged: doc.staged, base: doc.base }); // pins a preview
         tab.append(close);
         return tab;
       }),

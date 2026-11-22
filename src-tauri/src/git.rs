@@ -1,6 +1,8 @@
 use crate::error::AppError;
 use crate::fs::READ_CAP;
-use git2::{Delta, Diff, DiffFindOptions, DiffOptions, Oid, Patch, Repository, Tree};
+use git2::{
+    Delta, Diff, DiffFindOptions, DiffOptions, IndexAddOption, Oid, Patch, Repository, Tree,
+};
 use serde::Serialize;
 use std::path::Path;
 #[cfg(test)]
@@ -140,17 +142,74 @@ pub fn status(repo: &Path) -> Result<Status, AppError> {
     })
 }
 
+fn read_disk(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Records the whole working tree (tracked and untracked, minus ignored files) as a git tree
+/// object and returns its id. Only objects are written: the index, HEAD and refs stay as they
+/// are, and git's own garbage collection eventually drops old snapshots.
+pub fn snapshot(repo: &Path) -> Result<String, AppError> {
+    let r = open(repo)?;
+    // A copy of the index in memory: it is never written back to .git/index.
+    let mut index = r.index()?;
+    index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+    index.update_all(["*"], None)?;
+    Ok(index.write_tree()?.to_string())
+}
+
+fn base_tree<'r>(r: &'r Repository, base: &str) -> Result<Tree<'r>, AppError> {
+    let id = Oid::from_str(base)
+        .map_err(|_| AppError::new("invalid", format!("{base} is not a snapshot id")))?;
+    Ok(r.find_tree(id)?)
+}
+
+/// Files that differ between a snapshot and the working tree now: what changed since it was taken.
+pub fn changes_since(repo: &Path, base: &str) -> Result<Vec<FileChange>, AppError> {
+    let r = open(repo)?;
+    let tree = base_tree(&r, base)?;
+    let mut opts = DiffOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .show_untracked_content(true);
+    let diff = r.diff_tree_to_workdir(Some(&tree), Some(&mut opts))?;
+    let mut files = changes(&diff, repo, false)?;
+    // Relative to a snapshot, a file that is new on disk is simply added.
+    for f in &mut files {
+        if f.status == "untracked" {
+            f.status = "added";
+        }
+    }
+    Ok(files)
+}
+
 /// Both full texts of one file's change; CodeMirror computes the visual diff.
 /// Staged: HEAD (at the old path, for renames) against the index. Unstaged: the index
-/// (empty for untracked files) against the file on disk (empty if deleted).
-pub fn diff_file(repo: &Path, path: &Path, staged: bool) -> Result<FileDiff, AppError> {
+/// (empty for untracked files) against the file on disk (empty if deleted). With `base`, a
+/// snapshot from [`snapshot`] against the file on disk.
+pub fn diff_file(
+    repo: &Path,
+    path: &Path,
+    staged: bool,
+    base: Option<&str>,
+) -> Result<FileDiff, AppError> {
     let r = open(repo)?;
     let rel = relative(repo, path)?;
     let blob = |id: Oid| -> Result<Vec<u8>, AppError> { Ok(r.find_blob(id)?.content().to_vec()) };
     let index = r.index()?;
     let in_index = || index.get_path(rel, 0).map(|e| blob(e.id)).transpose();
 
-    let (old, new) = if staged {
+    let (old, new) = if let Some(base) = base {
+        let old = match base_tree(&r, base)?.get_path(rel).ok() {
+            Some(entry) => Some(blob(entry.id())?),
+            None => None,
+        };
+        (old, read_disk(path)?)
+    } else if staged {
         let diff = staged_diff(&r)?;
         let old_rel = diff
             .deltas()
@@ -163,12 +222,7 @@ pub fn diff_file(repo: &Path, path: &Path, staged: bool) -> Result<FileDiff, App
         };
         (old, in_index()?)
     } else {
-        let new = match std::fs::read(path) {
-            Ok(bytes) => Some(bytes),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e.into()),
-        };
-        (in_index()?, new)
+        (in_index()?, read_disk(path)?)
     };
 
     let (old, new) = (old.unwrap_or_default(), new.unwrap_or_default());
@@ -263,7 +317,7 @@ pub mod tests {
         let f = find(&st, &t.path("a.txt"), false);
         assert_eq!((f.status, f.added, f.removed), ("modified", 2, 1));
 
-        let d = diff_file(&t.0, &t.path("a.txt"), false).unwrap();
+        let d = diff_file(&t.0, &t.path("a.txt"), false, None).unwrap();
         assert_eq!(
             (d.old_text.as_str(), d.new_text.as_str(), d.binary),
             ("1\n2\n3\n", "1\nX\n3\n4\n", false)
@@ -293,24 +347,24 @@ pub mod tests {
         assert_eq!((gone.status, gone.removed), ("deleted", 1));
 
         assert_eq!(
-            diff_file(&t.0, &t.path("staged.txt"), true)
+            diff_file(&t.0, &t.path("staged.txt"), true, None)
                 .unwrap()
                 .new_text,
             "s\n"
         );
         assert_eq!(
-            diff_file(&t.0, &t.path("staged.txt"), true)
+            diff_file(&t.0, &t.path("staged.txt"), true, None)
                 .unwrap()
                 .old_text,
             ""
         );
         assert_eq!(
-            diff_file(&t.0, &t.path("dir/new.txt"), false)
+            diff_file(&t.0, &t.path("dir/new.txt"), false, None)
                 .unwrap()
                 .new_text,
             "a\nb\n"
         );
-        let d = diff_file(&t.0, &t.path("gone.txt"), false).unwrap();
+        let d = diff_file(&t.0, &t.path("gone.txt"), false, None).unwrap();
         assert_eq!((d.old_text.as_str(), d.new_text.as_str()), ("bye\n", ""));
     }
 
@@ -327,7 +381,7 @@ pub mod tests {
         let f = find(&st, &t.path("new.txt"), true);
         assert_eq!(f.status, "renamed");
         assert_eq!(f.old_path.as_deref(), Some(s(t.path("old.txt")).as_str()));
-        let d = diff_file(&t.0, &t.path("new.txt"), true).unwrap();
+        let d = diff_file(&t.0, &t.path("new.txt"), true, None).unwrap();
         assert_eq!(d.old_text, d.new_text);
     }
 
@@ -347,7 +401,7 @@ pub mod tests {
     fn diff_rejects_paths_outside_the_repo() {
         let (t, _r) = repo();
         assert_eq!(
-            diff_file(&t.0, Path::new("/etc/hosts"), false)
+            diff_file(&t.0, Path::new("/etc/hosts"), false, None)
                 .unwrap_err()
                 .code,
             "invalid"
@@ -355,10 +409,67 @@ pub mod tests {
     }
 
     #[test]
+    fn snapshot_tracks_only_changes_made_after_it() {
+        let (t, r) = repo();
+        fs::write(t.path("a.txt"), "1\n").unwrap();
+        fs::write(t.path("before.txt"), "untracked before\n").unwrap();
+        fs::write(t.path(".gitignore"), "*.log\n").unwrap();
+        commit_all(&t, &["a.txt", ".gitignore"], "init");
+        fs::write(t.path("a.txt"), "1\n2\n").unwrap(); // dirty before the snapshot
+        let index_before = fs::read(t.path(".git/index")).unwrap();
+        let head_before = r.head().unwrap().target();
+
+        let base = snapshot(&t.0).unwrap();
+
+        // The snapshot leaves the index and HEAD alone.
+        assert_eq!(fs::read(t.path(".git/index")).unwrap(), index_before);
+        assert_eq!(r.head().unwrap().target(), head_before);
+        assert!(changes_since(&t.0, &base).unwrap().is_empty());
+
+        // The "turn": edit one file, add one, delete one, touch an ignored file.
+        fs::write(t.path("a.txt"), "1\n2\n3\n").unwrap();
+        fs::write(t.path("new.txt"), "n\n").unwrap();
+        fs::remove_file(t.path("before.txt")).unwrap();
+        fs::write(t.path("debug.log"), "x").unwrap();
+
+        let mut got: Vec<_> = changes_since(&t.0, &base)
+            .unwrap()
+            .into_iter()
+            .map(|f| {
+                (
+                    f.path.rsplit('/').next().unwrap().to_string(),
+                    f.status,
+                    f.added,
+                    f.removed,
+                )
+            })
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            [
+                ("a.txt".to_string(), "modified", 1, 0),
+                ("before.txt".to_string(), "deleted", 0, 1),
+                ("new.txt".to_string(), "added", 1, 0),
+            ]
+        );
+        let d = diff_file(&t.0, &t.path("a.txt"), false, Some(&base)).unwrap();
+        assert_eq!(
+            (d.old_text.as_str(), d.new_text.as_str()),
+            ("1\n2\n", "1\n2\n3\n")
+        );
+        assert_eq!(changes_since(&t.0, "nope").unwrap_err().code, "invalid");
+    }
+
+    #[test]
     fn binary_files_are_flagged() {
         let (t, _r) = repo();
         fs::write(t.path("img.bin"), [0u8, 1, 2, 3]).unwrap();
-        assert!(diff_file(&t.0, &t.path("img.bin"), false).unwrap().binary);
+        assert!(
+            diff_file(&t.0, &t.path("img.bin"), false, None)
+                .unwrap()
+                .binary
+        );
     }
 
     #[test]

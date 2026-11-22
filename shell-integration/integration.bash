@@ -8,6 +8,31 @@ for __tine_f in ~/.bash_profile ~/.bash_login ~/.profile; do
 done
 unset __tine_f
 
-# OSC 7: report the working directory so tine's file tree can follow it.
-__tine_osc7() { printf '\e]7;file://%s%s\e\\' "$HOSTNAME" "${PWD//\%/%25}"; }
-PROMPT_COMMAND="__tine_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+# Marks for tine: OSC 7 reports the working directory; OSC 133 marks prompt (A),
+# command start (C) and command end with its exit code (D); OSC 633;E carries the
+# command line, percent-encoded so control characters cannot end the sequence early.
+__tine_ran=
+__tine_armed=
+__tine_pre() {
+  local ret=$?
+  [ -n "$__tine_ran" ] && printf '\e]133;D;%s\a' "$ret"
+  __tine_ran=
+  printf '\e]133;A\a'
+  printf '\e]7;file://%s%s\e\\' "$HOSTNAME" "${PWD//\%/%25}"
+}
+# Runs last in PROMPT_COMMAND: the next DEBUG trap is the user's own command.
+__tine_arm() { __tine_armed=1; }
+__tine_debug() {
+  [ -n "$__tine_armed" ] || return 0
+  __tine_armed=
+  local cmd
+  cmd=$(HISTTIMEFORMAT= history 1 | sed 's/^ *[0-9]* *//')
+  cmd=${cmd//\%/%25}
+  cmd=${cmd//$'\a'/%07}
+  cmd=${cmd//$'\e'/%1B}
+  printf '\e]633;E;%s\a\e]133;C\a' "$cmd"
+  __tine_ran=1
+}
+PROMPT_COMMAND="__tine_pre${PROMPT_COMMAND:+;$PROMPT_COMMAND};__tine_arm"
+# Never replace a DEBUG trap the user set up themselves; blocks are then simply off.
+[ -z "$(trap -p DEBUG)" ] && trap '__tine_debug' DEBUG

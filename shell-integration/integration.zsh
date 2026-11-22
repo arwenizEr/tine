@@ -12,8 +12,27 @@ unset TINE_USER_ZDOTDIR
 [[ -r ${ZDOTDIR:-$HOME}/.zshenv ]] && source "${ZDOTDIR:-$HOME}/.zshenv"
 
 if [[ -o interactive ]]; then
-  # OSC 7: report the working directory so tine's file tree can follow it.
-  __tine_osc7() { printf '\e]7;file://%s%s\e\\' "$HOST" "${PWD//\%/%25}" }
+  # Marks for tine: OSC 7 reports the working directory; OSC 133 marks prompt (A),
+  # command start (C) and command end with its exit code (D); OSC 633;E carries the
+  # command line, percent-encoded so control characters cannot end the sequence early.
+  __tine_ran=
+  __tine_precmd() {
+    local ret=$?
+    [[ -n $__tine_ran ]] && printf '\e]133;D;%s\a' "$ret"
+    __tine_ran=
+    printf '\e]133;A\a'
+    printf '\e]7;file://%s%s\e\\' "$HOST" "${PWD//\%/%25}"
+  }
+  __tine_preexec() {
+    local cmd=${1//\%/%25}
+    cmd=${cmd//$'\n'/%0A}
+    cmd=${cmd//$'\a'/%07}
+    cmd=${cmd//$'\e'/%1B}
+    printf '\e]633;E;%s\a\e]133;C\a' "$cmd"
+    __tine_ran=1
+  }
   autoload -Uz add-zsh-hook
-  add-zsh-hook precmd __tine_osc7
+  add-zsh-hook preexec __tine_preexec
+  # First in line, so $? is still the command's exit code.
+  precmd_functions=(__tine_precmd ${precmd_functions[@]})
 fi

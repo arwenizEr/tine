@@ -18,7 +18,16 @@ export const quickLook = signal(false);
  * slot. `staged` only matters for diffs: the index against HEAD, or the working tree against the index.
  */
 export type DocKind = "file" | "dir" | "diff";
-export type Doc = { id: number; path: string; kind: DocKind; staged: boolean; preview: boolean; dirty: boolean };
+export type Doc = {
+  id: number;
+  path: string;
+  kind: DocKind;
+  staged: boolean;
+  /** For diffs: a snapshot id ("This turn"); the diff then runs from it to the file on disk. */
+  base?: string;
+  preview: boolean;
+  dirty: boolean;
+};
 export const docs = signal<Doc[]>([]);
 export const activeDocId = signal<number | null>(null);
 
@@ -30,12 +39,20 @@ export const focusDoc = signal<number | null>(null);
 
 let nextDocId = 0;
 
-export type OpenOptions = { preview?: boolean; line?: number; col?: number; focus?: boolean; staged?: boolean };
+export type OpenOptions = {
+  preview?: boolean;
+  line?: number;
+  col?: number;
+  focus?: boolean;
+  staged?: boolean;
+  base?: string;
+};
 
 export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): void {
   const list = docs.get();
   const staged = kind === "diff" && !!opts.staged;
-  let doc = list.find((d) => d.path === path && d.kind === kind && d.staged === staged);
+  const base = kind === "diff" ? opts.base : undefined;
+  let doc = list.find((d) => d.path === path && d.kind === kind && d.staged === staged && d.base === base);
   if (doc) {
     if (!opts.preview && doc.preview) {
       doc = { ...doc, preview: false };
@@ -43,7 +60,7 @@ export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): vo
       docs.set(list.map((d) => (d.id === promoted.id ? promoted : d)));
     }
   } else {
-    doc = { id: ++nextDocId, path, kind, staged, preview: !!opts.preview, dirty: false };
+    doc = { id: ++nextDocId, path, kind, staged, base, preview: !!opts.preview, dirty: false };
     const slot = opts.preview ? list.findIndex((d) => d.preview) : -1;
     docs.set(slot >= 0 ? list.with(slot, doc) : [...list, doc]);
   }

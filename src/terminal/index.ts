@@ -9,14 +9,17 @@ import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../pat
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { activeTabId, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { Blocks, type Block } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
+import { toast } from "../ui/toast.ts";
 
 type Session = {
   id: number;
   term: Terminal;
   fit: FitAddon;
   search: SearchAddon;
+  blocks: Blocks;
   el: HTMLElement;
   ptyId: number | null;
 };
@@ -53,6 +56,8 @@ export type TerminalActions = {
   send(data: string): void;
   /** Opens the find bar for the active tab's scrollback. */
   find(): void;
+  /** Scrolls to the previous (-1) or next (1) command block. */
+  block(direction: -1 | 1): void;
   /** The element holding the terminals, to tell whether a key or drop belongs to them. */
   host: HTMLElement;
   dispose(): void;
@@ -169,7 +174,7 @@ export function mount(root: HTMLElement): TerminalActions {
       // No WebGL (e.g. some WebKitGTK setups): xterm keeps its DOM renderer.
     }
 
-    const session: Session = { id, term, fit, search: searchAddon, el, ptyId: null };
+    const session: Session = { id, term, fit, search: searchAddon, blocks: new Blocks(term), el, ptyId: null };
     sessions.set(id, session);
     tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle" }]);
 
@@ -193,8 +198,9 @@ export function mount(root: HTMLElement): TerminalActions {
     term.onBell(() => {
       if (!looking(id)) setTabActivity(id, "attention");
     });
-    term.onData(() => {
+    term.onData((data) => {
       lastInput = performance.now();
+      if (data.includes("\r")) commands.turnStarted();
     });
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
@@ -282,6 +288,69 @@ export function mount(root: HTMLElement): TerminalActions {
     true,
   );
 
+  /** Types a command line into an idle shell; Ctrl+U first clears anything half-typed. */
+  const runCommand = (s: Session, line: string): string | null => {
+    if (s.ptyId === null) return "The shell is not running.";
+    if (!s.blocks.integrated) return "This shell has no tine integration (zsh and bash have it).";
+    if (!s.blocks.atPrompt) return "The shell is busy; wait for its prompt.";
+    void ptyWrite(s.ptyId, `\x15${line}\r`).catch(() => {});
+    s.term.focus();
+    return null;
+  };
+
+  // Block actions appear over the block under the pointer.
+  const actions = document.createElement("div");
+  actions.className = "block-actions";
+  actions.hidden = true;
+  let hovered: { session: Session; block: Block } | null = null;
+  const actionButton = (label: string, run: (s: Session, b: Block) => void) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.onmousedown = (e) => e.preventDefault(); // keep focus in the terminal
+    b.onclick = () => hovered && run(hovered.session, hovered.block);
+    return b;
+  };
+  actions.append(
+    actionButton("Copy Command", (_s, b) => void navigator.clipboard.writeText(b.command)),
+    actionButton("Copy Output", (s, b) => void navigator.clipboard.writeText(s.blocks.output(b))),
+    actionButton("Rerun", (s, b) => {
+      const why = runCommand(s, b.command);
+      if (why) toast(why);
+    }),
+  );
+  host.append(actions);
+
+  let hoverQueued = false;
+  const onHover = (e: MouseEvent) => {
+    if (hoverQueued) return;
+    hoverQueued = true;
+    requestAnimationFrame(() => {
+      hoverQueued = false;
+      const s = active();
+      const screen = s?.el.querySelector(".xterm-screen");
+      if (!s || !screen || s.term.buffer.active.type === "alternate") return void (actions.hidden = true);
+      const rect = screen.getBoundingClientRect();
+      const cell = rect.height / s.term.rows;
+      const top = s.term.buffer.active.viewportY;
+      const block = s.blocks.at(top + Math.floor((e.clientY - rect.top) / cell));
+      if (!block || !block.command) return void (actions.hidden = true);
+      hovered = { session: s, block };
+      // Pin to the block's first visible line.
+      const row = Math.max(0, block.prompt.line - top);
+      actions.style.top = `${rect.top - host.getBoundingClientRect().top + row * cell}px`;
+      actions.hidden = false;
+    });
+  };
+  host.addEventListener("mousemove", onHover);
+  host.addEventListener("mouseleave", (e) => {
+    if (!actions.contains(e.relatedTarget as Node)) actions.hidden = true;
+  });
+
+  commands.cdInTerminal = (dir) => {
+    const s = active();
+    return s ? runCommand(s, ` cd -- ${shellQuote(dir)}`) : "No terminal";
+  };
+
   // Coming back to the window counts as looking at the active tab.
   const onWindowFocus = () => {
     const id = activeTabId.get();
@@ -315,6 +384,10 @@ export function mount(root: HTMLElement): TerminalActions {
       if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
     },
     find: () => search.open(),
+    block: (direction) => {
+      actions.hidden = true;
+      active()?.blocks.jump(direction);
+    },
     send: (data) => {
       const s = active();
       if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});

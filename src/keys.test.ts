@@ -50,6 +50,12 @@ test("find maps on both platforms", () => {
   assert.equal(keyAction(key("f", "KeyF", { ctrlKey: true }), false), null);
 });
 
+test("Cmd+Up/Down (Ctrl+Shift on Linux) jump between command blocks", () => {
+  assert.deepEqual(keyAction(key("ArrowUp", "ArrowUp", { metaKey: true }), true), { type: "block", direction: -1 });
+  assert.deepEqual(keyAction(key("ArrowDown", "ArrowDown", { ctrlKey: true, shiftKey: true }), false), { type: "block", direction: 1 });
+  assert.equal(keyAction(key("ArrowUp", "ArrowUp"), true), null);
+});
+
 test("Shift+Enter sends ESC CR; plain Enter goes to the shell", () => {
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), true), { type: "send", data: SHIFT_ENTER });
   assert.deepEqual(keyAction(key("Enter", "Enter", { shiftKey: true }), false), { type: "send", data: SHIFT_ENTER });

@@ -1036,3 +1036,85 @@ body {
     opacity: 0;
   }
 }
+
+/* --- M4: command blocks and "This turn" --- */
+
+.block-sep {
+  pointer-events: none;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  position: relative;
+}
+
+.block-sep.failed {
+  border-top-color: rgb(224 108 117 / 55%);
+  box-shadow: inset 2px 0 0 #e06c75;
+}
+
+.block-label {
+  position: absolute;
+  right: 6px;
+  top: -0.65em;
+  padding: 0 6px;
+  font: 10px var(--ui-font);
+  line-height: 1.3;
+  color: var(--fg-muted);
+  background: var(--term-bg);
+  border-radius: 3px;
+}
+
+.block-sep.failed .block-label {
+  color: #e06c75;
+}
+
+.block-actions {
+  position: absolute;
+  z-index: 4;
+  right: 18px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  transform: translateY(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+
+.block-actions button {
+  border: 0;
+  background: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.block-actions button:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.git-scope {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin: 6px 8px 0;
+  padding: 2px;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+.git-scope button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.git-scope button[aria-pressed="true"] {
+  background: var(--selection);
+  color: var(--fg);
+}

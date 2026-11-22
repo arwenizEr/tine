@@ -229,6 +229,20 @@ export function mount(parent: HTMLElement): () => void {
 
   const toggle = (n: Node) => void (n.expanded ? collapse(n) : expand(n));
 
+  // A cd the tree itself asked for: the shell's new folder must not re-root the tree.
+  let keepRootFor: string | null = null;
+
+  /** Opening a folder (double-click, Enter) also moves the active shell there when it is idle. */
+  const openFolder = (n: Node) => {
+    toggle(n);
+    keepRootFor = n.path;
+    const why = commands.cdInTerminal(n.path);
+    if (why) {
+      keepRootFor = null;
+      toast(why);
+    }
+  };
+
   refresh = async (dir) => {
     const n = byPath.get(dir);
     if (n?.expanded) await load(n).catch(() => {});
@@ -290,7 +304,7 @@ export function mount(parent: HTMLElement): () => void {
   };
   win.ondblclick = (e) => {
     const n = rowNode(e);
-    if (n?.kind === "dir") toggle(n);
+    if (n?.kind === "dir") openFolder(n);
     else if (n) openDoc(n.path, "file", { focus: true });
   };
   el.oncontextmenu = (e) => {
@@ -345,7 +359,7 @@ export function mount(parent: HTMLElement): () => void {
         else if (n) select(byPath.get(dirname(n.path)) === root ? undefined : byPath.get(dirname(n.path)));
         break;
       case "Enter":
-        if (n?.kind === "dir") toggle(n);
+        if (n?.kind === "dir") openFolder(n);
         else if (n) openDoc(n.path, "file", { focus: true });
         break;
       case " ":
@@ -386,6 +400,11 @@ export function mount(parent: HTMLElement): () => void {
     const cwd = activeCwd();
     if (!cwd || cwd === lastCwd) return;
     lastCwd = cwd;
+    if (cwd === keepRootFor) {
+      keepRootFor = null;
+      const r = treeRoot.get();
+      if (r && isInside(r, cwd)) return;
+    }
     const token = ++followToken;
     const found = await findRoot(cwd);
     if (token !== followToken) return;

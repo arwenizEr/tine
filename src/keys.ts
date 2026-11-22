@@ -12,6 +12,7 @@ export type KeyAction =
   | { type: "newFile" }
   | { type: "openFolder" }
   | { type: "find" }
+  | { type: "block"; direction: -1 | 1 }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -38,6 +39,8 @@ export function keyAction(e: KeyLike, mac: boolean): KeyAction | null {
     ? e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey
     : e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey;
   if (!appMod) return null;
+
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") return { type: "block", direction: e.key === "ArrowUp" ? -1 : 1 };
 
   const digit = /^Digit([1-9])$/.exec(e.code);
   if (digit) return { type: "selectTab", index: Number(digit[1]) - 1 };

@@ -154,6 +154,8 @@ export function mountApp(root: HTMLElement): () => void {
         return term.send(action.data);
       case "find":
         return term.find();
+      case "block":
+        return term.block(action.direction);
     }
   };
 
@@ -161,9 +163,10 @@ export function mountApp(root: HTMLElement): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     const action = keyAction(e, terminal.isMac);
     if (!action) return;
-    // Shift+Enter's escape sequence and Cmd+F are the terminal's only while it has focus;
-    // elsewhere the editor keeps its own Shift+Enter and search.
-    if ((action.type === "send" || action.type === "find") && !term.host.contains(e.target as Node)) return;
+    // Shift+Enter's escape sequence, Cmd+F and Cmd+Up/Down are the terminal's only while it has
+    // focus; elsewhere the editor keeps its own Shift+Enter, search and cursor moves.
+    const terminalOnly = action.type === "send" || action.type === "find" || action.type === "block";
+    if (terminalOnly && !term.host.contains(e.target as Node)) return;
     e.preventDefault();
     e.stopPropagation();
     run(action);

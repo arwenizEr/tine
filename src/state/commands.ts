@@ -8,4 +8,11 @@ export const commands = {
   pasteToTerminal: (_text: string): void => {},
   /** Closes the active viewer doc, asking first if it has unsaved changes. */
   closeActiveDoc: (): void => {},
+  /**
+   * Runs `cd` in the active tab, only while its shell is idle at the prompt. Returns why it
+   * did not, or null when it did.
+   */
+  cdInTerminal: (_dir: string): string | null => "No terminal",
+  /** Enter was pressed in a terminal: a new turn starts (for the git panel's "This turn"). */
+  turnStarted: (): void => {},
 };

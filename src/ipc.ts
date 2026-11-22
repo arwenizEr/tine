@@ -46,12 +46,23 @@ export function ptySpawn(
   return invoke("pty_spawn", { cwd, cols, rows, on_data: channel });
 }
 
-export const ptyWrite = (ptyId: number, data: string) => invoke<void>("pty_write", { pty_id: ptyId, data });
+// Commands run concurrently in Rust, so two quick writes could reach the shell out of order.
+// Chaining them per PTY keeps keystrokes in the order they were typed.
+const writeQueues = new Map<number, Promise<void>>();
+export function ptyWrite(ptyId: number, data: string): Promise<void> {
+  const prev = writeQueues.get(ptyId) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(() => invoke<void>("pty_write", { pty_id: ptyId, data }));
+  writeQueues.set(ptyId, next);
+  return next;
+}
 
 export const ptyResize = (ptyId: number, cols: number, rows: number) =>
   invoke<void>("pty_resize", { pty_id: ptyId, cols, rows });
 
-export const ptyKill = (ptyId: number) => invoke<void>("pty_kill", { pty_id: ptyId });
+export function ptyKill(ptyId: number): Promise<void> {
+  writeQueues.delete(ptyId);
+  return invoke<void>("pty_kill", { pty_id: ptyId });
+}
 
 export type PtyExit = { pty_id: number; code: number | null };
 
@@ -101,8 +112,12 @@ export type GitStatus = { branch: string; files: GitFile[] };
 export type GitDiff = { old_text: string; new_text: string; binary: boolean };
 
 export const gitStatus = (repo: string) => invoke<GitStatus>("git_status", { repo });
-export const gitDiffFile = (repo: string, path: string, staged: boolean) =>
-  invoke<GitDiff>("git_diff_file", { repo, path, staged });
+/** With `base` (a snapshot id), the diff is from that snapshot to the file on disk. */
+export const gitDiffFile = (repo: string, path: string, staged: boolean, base?: string) =>
+  invoke<GitDiff>("git_diff_file", { repo, path, staged, base });
+/** Records the working tree; returns a snapshot id for `gitChangesSince` and `gitDiffFile`. */
+export const gitSnapshot = (repo: string) => invoke<string>("git_snapshot", { repo });
+export const gitChangesSince = (repo: string, base: string) => invoke<GitFile[]>("git_changes_since", { repo, base });
 
 export const onGitChanged = (handler: (repo: string) => void) =>
   tauri.event.listen<{ repo: string }>("git-changed", (e) => handler(e.payload.repo));

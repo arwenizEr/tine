@@ -170,8 +170,20 @@ async fn git_diff_file(
     repo: String,
     path: String,
     staged: bool,
+    base: Option<String>,
 ) -> Result<git::FileDiff, AppError> {
-    git::diff_file(abs(&repo)?, abs(&path)?, staged)
+    git::diff_file(abs(&repo)?, abs(&path)?, staged, base.as_deref())
+}
+
+/// Records the working tree as a git tree object; `git_changes_since` compares against it.
+#[tauri::command(rename_all = "snake_case")]
+async fn git_snapshot(repo: String) -> Result<String, AppError> {
+    git::snapshot(abs(&repo)?)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn git_changes_since(repo: String, base: String) -> Result<Vec<git::FileChange>, AppError> {
+    git::changes_since(abs(&repo)?, &base)
 }
 
 /// Only links meant for a browser or mail client; never `file:` or custom schemes from untrusted output.
@@ -302,6 +314,8 @@ pub fn run() {
             fs_unwatch,
             git_status,
             git_diff_file,
+            git_snapshot,
+            git_changes_since,
             open_url
         ]);
     #[cfg(target_os = "macos")]
