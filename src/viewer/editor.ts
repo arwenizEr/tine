@@ -27,6 +27,21 @@ const theme = EditorView.theme({
   ".cm-gutters": { backgroundColor: "var(--bg)" },
 });
 
+/** Read-only code view, for diffs: line numbers, search and syntax highlighting. */
+export async function readOnlyExtensions(path: string): Promise<Extension[]> {
+  return [
+    lineNumbers(),
+    highlightSpecialChars(),
+    drawSelection(),
+    search({ top: true }),
+    keymap.of(searchKeymap),
+    EditorState.readOnly.of(true),
+    oneDark,
+    theme,
+    await languageFor(path),
+  ];
+}
+
 /** A plain-text editor state: line numbers, undo, search (Cmd+F), Cmd+S to save. */
 export async function createState(
   path: string,

@@ -1,9 +1,12 @@
 import * as filetree from "./filetree/index.ts";
+import { mountBadge } from "./git/badge.ts";
+import * as gitPanel from "./git/index.ts";
 import { onMenu, pickFolder } from "./ipc.ts";
 import { keyAction, type KeyAction } from "./keys.ts";
 import { commands } from "./state/commands.ts";
 import { treeRoot } from "./state/files.ts";
 import { sidebarVisible, viewerVisible } from "./state/layout.ts";
+import { gitState, repo, sidebarView } from "./state/git.ts";
 import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { toast } from "./ui/toast.ts";
@@ -33,10 +36,49 @@ function resizer(panel: HTMLElement, side: 1 | -1): HTMLElement {
   return handle;
 }
 
-/** Layout: sidebar (file tree) | terminal | side panel (viewer). */
+/** Sidebar switch between the file tree and the git panel; Changes only shows inside a repo. */
+function sidebarSwitch(parent: HTMLElement): () => void {
+  const bar = document.createElement("div");
+  bar.className = "sidebar-switch";
+  bar.setAttribute("role", "tablist");
+  const files = Object.assign(document.createElement("button"), { textContent: "Files" });
+  const changes = document.createElement("button");
+  for (const [b, view] of [[files, "files"], [changes, "git"]] as const) {
+    b.setAttribute("role", "tab");
+    b.onclick = () => sidebarView.set(view);
+  }
+  bar.append(files, changes);
+  parent.append(bar);
+  const render = () => {
+    if (!repo.get() && sidebarView.get() === "git") sidebarView.set("files");
+    const n = new Set(gitState.get()?.files.map((f) => f.path)).size;
+    changes.textContent = n ? `Changes (${n})` : "Changes";
+    changes.hidden = !repo.get();
+    files.setAttribute("aria-selected", String(sidebarView.get() === "files"));
+    changes.setAttribute("aria-selected", String(sidebarView.get() === "git"));
+  };
+  const unsubs = [repo.subscribe(render), gitState.subscribe(render), sidebarView.subscribe(render)];
+  render();
+  return () => {
+    unsubs.forEach((u) => u());
+    bar.remove();
+  };
+}
+
+/** Layout: sidebar (file tree or git panel) | terminal | side panel (viewer), over a status bar. */
 export function mountApp(root: HTMLElement): () => void {
+  const workspace = document.createElement("div");
+  workspace.className = "workspace";
+  const statusBar = document.createElement("footer");
+  statusBar.className = "statusbar";
+  root.append(workspace, statusBar);
+
   const sidebar = document.createElement("aside");
   sidebar.className = "sidebar";
+  const filesView = document.createElement("div");
+  filesView.className = "sidebar-view";
+  const gitView = document.createElement("div");
+  gitView.className = "sidebar-view";
   const main = document.createElement("main");
   main.className = "terminal-column";
   const side = document.createElement("section");
@@ -44,9 +86,16 @@ export function mountApp(root: HTMLElement): () => void {
   side.setAttribute("aria-label", "Viewer");
   const leftHandle = resizer(sidebar, 1);
   const rightHandle = resizer(side, -1);
-  root.append(sidebar, leftHandle, main, rightHandle, side);
+  workspace.append(sidebar, leftHandle, main, rightHandle, side);
 
-  const disposeTree = filetree.mount(sidebar);
+  const disposeSwitch = sidebarSwitch(sidebar);
+  sidebar.append(filesView, gitView);
+  const disposeTree = filetree.mount(filesView);
+  const disposeGit = gitPanel.mount(gitView);
+  const disposeBadge = mountBadge(statusBar, () => {
+    sidebarView.set("git");
+    sidebarVisible.set(true);
+  });
   const term = terminal.mount(main);
   const disposeViewer = viewer.mount(side);
   const disposeQuickLook = quicklook.mount(root);
@@ -107,6 +156,10 @@ export function mountApp(root: HTMLElement): () => void {
   });
 
   const unsubs = [
+    sidebarView.subscribe((v) => {
+      filesView.hidden = v !== "files";
+      gitView.hidden = v !== "git";
+    }),
     sidebarVisible.subscribe((v) => {
       sidebar.hidden = leftHandle.hidden = !v;
     }),
@@ -122,7 +175,11 @@ export function mountApp(root: HTMLElement): () => void {
     disposeQuickLook();
     disposeViewer();
     term.dispose();
+    disposeBadge();
+    disposeGit();
     disposeTree();
-    for (const node of [sidebar, leftHandle, main, rightHandle, side]) node.remove();
+    disposeSwitch();
+    workspace.remove();
+    statusBar.remove();
   };
 }

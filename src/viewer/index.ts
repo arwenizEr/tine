@@ -1,12 +1,28 @@
-import { Transaction, type EditorState, type Text } from "@codemirror/state";
+import { MergeView, unifiedMergeView } from "@codemirror/merge";
+import { EditorState, Transaction, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { assetUrl, confirmDialog, errorCode, errorMessage, fsStat, fsUnwatch, fsWatch, fsWriteFile, onFsChanged, openUrl, type Stat } from "../ipc.ts";
+import {
+  assetUrl,
+  confirmDialog,
+  errorCode,
+  errorMessage,
+  fsStat,
+  fsUnwatch,
+  fsWatch,
+  fsWriteFile,
+  gitDiffFile,
+  onFsChanged,
+  onGitChanged,
+  openUrl,
+  type Stat,
+} from "../ipc.ts";
 import { basename, dirname } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { activeDocId, docs, focusDoc, jump, openDoc, removeDoc, selected, updateDoc, type Doc } from "../state/files.ts";
+import { repo } from "../state/git.ts";
 import { toast } from "../ui/toast.ts";
 import { infoCard, loadContent } from "./content.ts";
-import { createState } from "./editor.ts";
+import { createState, readOnlyExtensions } from "./editor.ts";
 import { renderFolder } from "./folder.ts";
 import { renderMarkdown } from "./markdown.ts";
 
@@ -27,8 +43,14 @@ type TextDoc = {
   bar: Bar;
 };
 
+type DiffDoc = { kind: "diff"; repo: string; old: string; new: string; binary: boolean; version: number };
+
+/** Unified or side by side; one choice for all diffs, like an editor setting. */
+let diffLayout: "unified" | "split" = "unified";
+
 type Loaded =
   | { kind: "loading" }
+  | DiffDoc
   | { kind: "error"; message: string }
   | { kind: "dir"; version: number }
   | { kind: "image"; stat: Stat }
@@ -49,7 +71,8 @@ export function mount(parent: HTMLElement): () => void {
   const folderHost = el("div", "doc-folder");
   const imageHost = el("div", "doc-image");
   const infoHost = el("div", "doc-info");
-  const hosts = [editorHost, markdownHost, folderHost, imageHost, infoHost];
+  const diffHost = el("div", "doc-diff");
+  const hosts = [editorHost, markdownHost, folderHost, imageHost, infoHost, diffHost];
   body.append(...hosts);
   parent.append(tabsEl, toolbar, bar, body);
 
@@ -58,6 +81,7 @@ export function mount(parent: HTMLElement): () => void {
   let shownId: number | null = null; // doc whose state is in the editor view
   let folderShown: { id: number; version: number; cancel: () => void } | null = null;
   let markdownShown: { id: number; doc: Text } | null = null;
+  let diffShown: { id: number; key: string; destroy: () => void } | null = null;
 
   const docOf = (id: number) => docs.get().find((d) => d.id === id);
 
@@ -92,8 +116,26 @@ export function mount(parent: HTMLElement): () => void {
     return ready;
   };
 
+  /** Fetches both sides of a diff doc; keeps the current view if nothing changed. */
+  const loadDiff = async (doc: Doc) => {
+    const r = repo.get();
+    const prev = loaded.get(doc.id);
+    if (!r) return void loaded.set(doc.id, { kind: "error", message: "Not in a git repository." });
+    try {
+      const d = await gitDiffFile(r, doc.path, doc.staged);
+      if (!docOf(doc.id)) return;
+      if (prev?.kind === "diff" && prev.old === d.old_text && prev.new === d.new_text) return;
+      const version = prev?.kind === "diff" ? prev.version + 1 : 0;
+      loaded.set(doc.id, { kind: "diff", repo: r, old: d.old_text, new: d.new_text, binary: d.binary, version });
+    } catch (e) {
+      loaded.set(doc.id, { kind: "error", message: errorMessage(e) });
+    }
+    render();
+  };
+
   const load = async (doc: Doc) => {
     loaded.set(doc.id, { kind: "loading" });
+    if (doc.kind === "diff") return loadDiff(doc);
     const ready = watchDoc(doc);
     let next: Loaded;
     try {
@@ -222,7 +264,7 @@ export function mount(parent: HTMLElement): () => void {
         const tab = el("div", "doc-tab" + (doc.id === active ? " active" : "") + (doc.preview ? " preview" : ""));
         tab.title = doc.path;
         const name = el("span", "doc-tab-name");
-        name.textContent = basename(doc.path) || doc.path;
+        name.textContent = (basename(doc.path) || doc.path) + (doc.kind === "diff" ? (doc.staged ? " (staged)" : " (diff)") : "");
         tab.append(name);
         if (doc.dirty) {
           const dot = el("span", "doc-dirty");
@@ -238,7 +280,7 @@ export function mount(parent: HTMLElement): () => void {
           void closeDoc(doc.id);
         };
         tab.onclick = () => activeDocId.set(doc.id);
-        tab.ondblclick = () => openDoc(doc.path, doc.kind); // pins a preview
+        tab.ondblclick = () => openDoc(doc.path, doc.kind, { staged: doc.staged }); // pins a preview
         tab.append(close);
         return tab;
       }),
@@ -287,6 +329,10 @@ export function mount(parent: HTMLElement): () => void {
       return;
     }
     const l = loaded.get(doc.id) ?? { kind: "loading" };
+    if (diffShown && (l.kind !== "diff" || diffShown.id !== doc.id)) {
+      diffShown.destroy();
+      diffShown = null;
+    }
     if (folderShown && (l.kind !== "dir" || folderShown.id !== doc.id)) {
       folderShown.cancel();
       folderShown = null;
@@ -312,6 +358,9 @@ export function mount(parent: HTMLElement): () => void {
         imageHost.replaceChildren(img);
         return;
       }
+      case "diff":
+        renderDiff(doc, l);
+        return;
       case "dir":
         folderHost.hidden = false;
         if (folderShown?.id !== doc.id || folderShown.version !== l.version) {
@@ -353,6 +402,56 @@ export function mount(parent: HTMLElement): () => void {
     }
   };
 
+  const renderDiff = (doc: Doc, l: DiffDoc) => {
+    toolbar.hidden = false;
+    const layout = (value: typeof diffLayout, label: string) => {
+      const b = button(label, () => {
+        diffLayout = value;
+        render();
+      });
+      b.setAttribute("aria-pressed", String(diffLayout === value));
+      return b;
+    };
+    const spacer = el("span", "toolbar-spacer");
+    const openFile = button("Open File", () => openDoc(doc.path, "file"));
+    toolbar.replaceChildren(layout("unified", "Unified"), layout("split", "Side by Side"), spacer, openFile);
+    if (l.binary) {
+      infoHost.hidden = false;
+      infoHost.replaceChildren(infoCard(basename(doc.path), null, "Binary or larger than 2 MB: no diff shown"));
+      return;
+    }
+    if (l.old === l.new) {
+      bar.hidden = false;
+      bar.className = "doc-bar";
+      bar.textContent = "No content changes.";
+    }
+    diffHost.hidden = false;
+    const key = `${l.version}:${diffLayout}`;
+    if (diffShown?.id === doc.id && diffShown.key === key) return;
+    diffShown?.destroy();
+    diffHost.replaceChildren();
+    const id = doc.id;
+    diffShown = { id, key, destroy: () => {} };
+    void readOnlyExtensions(doc.path).then((extensions) => {
+      // Superseded while the language loaded.
+      if (diffShown?.id !== id || diffShown.key !== key) return;
+      const collapseUnchanged = { margin: 3, minSize: 6 };
+      if (diffLayout === "unified") {
+        const v = new EditorView({
+          parent: diffHost,
+          state: EditorState.create({
+            doc: l.new,
+            extensions: [...extensions, unifiedMergeView({ original: l.old, mergeControls: false, collapseUnchanged })],
+          }),
+        });
+        diffShown.destroy = () => v.destroy();
+      } else {
+        const v = new MergeView({ a: { doc: l.old, extensions }, b: { doc: l.new, extensions }, parent: diffHost, collapseUnchanged });
+        diffShown.destroy = () => v.destroy();
+      }
+    });
+  };
+
   const applyJumpAndFocus = (id: number, l: TextDoc) => {
     const j = jump.get();
     if (j?.docId === id) {
@@ -390,7 +489,7 @@ export function mount(parent: HTMLElement): () => void {
       }
       for (const d of list) {
         if (!loaded.has(d.id)) void load(d);
-        else void watchDoc(d); // follows renames
+        else if (d.kind !== "diff") void watchDoc(d); // follows renames
       }
       render();
     }),
@@ -429,9 +528,17 @@ export function mount(parent: HTMLElement): () => void {
           l.version++;
           if (activeDocId.get() === doc.id) render();
         }
-      } else if (paths.includes(doc.path)) {
+      } else if (doc.kind === "file" && paths.includes(doc.path)) {
         void checkDisk(doc);
       }
+    }
+  });
+
+  // Diffs follow the repo live: an agent's edits show up without a manual refresh.
+  const gitListener = onGitChanged((r) => {
+    for (const doc of docs.get()) {
+      const l = loaded.get(doc.id);
+      if (doc.kind === "diff" && l?.kind === "diff" && l.repo === r) void loadDiff(doc);
     }
   });
 
@@ -439,6 +546,8 @@ export function mount(parent: HTMLElement): () => void {
 
   return () => {
     unsubs.forEach((u) => u());
+    void gitListener.then((u) => u());
+    diffShown?.destroy();
     clearTimeout(previewTimer);
     void changeListener.then((u) => u());
     folderShown?.cancel();

@@ -10,6 +10,13 @@ body {
 
 body {
   display: flex;
+  flex-direction: column;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 [hidden] {
@@ -708,4 +715,266 @@ body {
 
 ::-webkit-scrollbar-thumb:active {
   background-color: rgb(255 255 255 / 28%);
+}
+
+/* --- Sidebar switch, status bar and git panel --- */
+
+.sidebar-switch {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-switch button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+
+.sidebar-switch button[aria-selected="true"] {
+  background: var(--selection);
+  color: var(--fg);
+}
+
+.sidebar-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.statusbar {
+  flex: none;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.git-badge {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.git-badge:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.git-added-count {
+  color: #98c379;
+}
+
+.git-removed-count {
+  color: #e06c75;
+}
+
+.git-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.git-commit {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-commit textarea {
+  resize: vertical;
+  font: 12px var(--ui-font);
+  padding: 6px 8px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.git-commit-button {
+  border: 0;
+  padding: 5px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #0d1420;
+  font-weight: 600;
+}
+
+.git-commit-button:disabled {
+  background: var(--border);
+  color: var(--fg-muted);
+}
+
+.git-lists {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.git-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.git-all {
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.git-all:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.git-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin: 0 4px;
+  padding: 0 4px 0 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: default;
+  transition: background-color var(--fast) var(--ease);
+}
+
+.git-row:hover,
+.git-row:focus {
+  background: rgb(255 255 255 / 5%);
+}
+
+.git-letter {
+  width: 12px;
+  flex: none;
+  font: 600 11px var(--mono-font);
+  text-align: center;
+}
+
+.git-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.git-counts {
+  display: flex;
+  gap: 4px;
+  font: 11px var(--mono-font);
+}
+
+.git-action {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  opacity: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.git-row:hover .git-action,
+.git-row:focus .git-action,
+.git-action:focus {
+  opacity: 1;
+}
+
+.git-action:hover {
+  background: var(--border);
+}
+
+.git-empty {
+  padding: 16px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.doc-diff {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.doc-diff .cm-editor,
+.doc-diff .cm-mergeView {
+  min-height: 100%;
+}
+
+/* Status colours, shared by the tree and the git panel. */
+.git-modified .tree-name,
+.git-row.git-modified .git-letter,
+.git-typechange .tree-name,
+.git-row.git-typechange .git-letter {
+  color: #e5c07b;
+}
+
+.git-added .tree-name,
+.git-untracked .tree-name,
+.git-row.git-added .git-letter,
+.git-row.git-untracked .git-letter {
+  color: #98c379;
+}
+
+.git-renamed .tree-name,
+.git-row.git-renamed .git-letter {
+  color: #61afef;
+}
+
+.git-deleted .tree-name,
+.git-conflicted .tree-name,
+.git-row.git-deleted .git-letter,
+.git-row.git-conflicted .git-letter {
+  color: #e06c75;
+}
+
+.git-row.git-deleted .git-name {
+  text-decoration: line-through;
 }

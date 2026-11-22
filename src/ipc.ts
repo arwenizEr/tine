@@ -86,6 +86,30 @@ export const onFsChanged = (handler: (e: FsChanged) => void) =>
 /** URL for an image preview, served by Tauri's asset protocol (scoped to watched folders). */
 export const assetUrl = (path: string) => tauri.core.convertFileSrc(path);
 
+// --- Git ---
+
+export type GitFile = {
+  path: string;
+  /** Previous path of a staged rename. */
+  old_path?: string;
+  status: "added" | "deleted" | "modified" | "renamed" | "untracked" | "typechange" | "conflicted";
+  staged: boolean;
+  added: number;
+  removed: number;
+};
+export type GitStatus = { branch: string; files: GitFile[] };
+export type GitDiff = { old_text: string; new_text: string; binary: boolean };
+
+export const gitStatus = (repo: string) => invoke<GitStatus>("git_status", { repo });
+export const gitDiffFile = (repo: string, path: string, staged: boolean) =>
+  invoke<GitDiff>("git_diff_file", { repo, path, staged });
+export const gitStage = (repo: string, paths: string[]) => invoke<void>("git_stage", { repo, paths });
+export const gitUnstage = (repo: string, paths: string[]) => invoke<void>("git_unstage", { repo, paths });
+export const gitCommit = (repo: string, message: string) => invoke<string>("git_commit", { repo, message });
+
+export const onGitChanged = (handler: (repo: string) => void) =>
+  tauri.event.listen<{ repo: string }>("git-changed", (e) => handler(e.payload.repo));
+
 // --- App ---
 
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});

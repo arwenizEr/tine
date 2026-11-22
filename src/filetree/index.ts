@@ -17,6 +17,7 @@ import {
 import { ancestors, basename, dirname, isInside, join, PATH_MIME } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, quickLook, renamePath, selected, treeRoot } from "../state/files.ts";
+import { gitState, repo } from "../state/git.ts";
 import { activeCwd, activeTabId, tabs } from "../state/tabs.ts";
 import { showMenu, type MenuItem } from "../ui/menu.ts";
 import { promptName } from "../ui/prompt.ts";
@@ -37,11 +38,12 @@ const OVERSCAN = 10;
 const isMac = navigator.userAgent.includes("Mac");
 
 /** The git root containing `dir`, or `dir` itself outside a repo. */
-async function findRoot(dir: string): Promise<string> {
+async function findRoot(dir: string): Promise<{ root: string; isRepo: boolean }> {
   for (const d of ancestors(dir)) {
-    if (await fsStat(join(d, ".git")).then(() => true, () => false)) return d;
+    // `.git` is a folder in a normal repo and a file in a worktree; both count.
+    if (await fsStat(join(d, ".git")).then(() => true, () => false)) return { root: d, isRepo: true };
   }
-  return dir;
+  return { root: dir, isRepo: false };
 }
 
 // Set by mount: re-lists a folder now instead of waiting for the watcher.
@@ -121,6 +123,8 @@ export function mount(parent: HTMLElement): () => void {
   let rows: Node[] = [];
   const byPath = new Map<string, Node>();
   const watched = new Set<string>();
+  /** Path -> git status, for colouring rows; the working-tree status wins over the staged one. */
+  let gitByPath = new Map<string, string>();
 
   const watch = (n: Node) => {
     // Ignored folders (node_modules, target) are never watched: they cause event storms.
@@ -145,7 +149,9 @@ export function mount(parent: HTMLElement): () => void {
     win.replaceChildren(
       ...rows.slice(first, last).map((n) => {
         const row = document.createElement("div");
-        row.className = "tree-row" + (n.path === sel ? " selected" : "") + (n.ignored ? " ignored" : "");
+        const git = gitByPath.get(n.path);
+        row.className =
+          "tree-row" + (n.path === sel ? " selected" : "") + (n.ignored ? " ignored" : "") + (git ? ` git-${git}` : "");
         row.dataset.path = n.path;
         row.draggable = true;
         row.setAttribute("role", "treeitem");
@@ -381,14 +387,21 @@ export function mount(parent: HTMLElement): () => void {
     if (!cwd || cwd === lastCwd) return;
     lastCwd = cwd;
     const token = ++followToken;
-    const r = await findRoot(cwd);
-    if (token === followToken) treeRoot.set(r);
+    const found = await findRoot(cwd);
+    if (token !== followToken) return;
+    treeRoot.set(found.root);
+    repo.set(found.isRepo ? found.root : null);
   };
 
   const unsubs = [
     tabs.subscribe(() => void follow()),
     activeTabId.subscribe(() => void follow()),
     treeRoot.subscribe((r) => r && setRoot(r)),
+    gitState.subscribe((st) => {
+      gitByPath = new Map();
+      for (const f of st?.files ?? []) if (!f.staged || !gitByPath.has(f.path)) gitByPath.set(f.path, f.status);
+      render();
+    }),
     selected.subscribe((sel) => {
       if (sel && !rows.some((r) => r.path === sel.path)) void reveal(sel.path);
       else if (sel) scrollToRow(rows.findIndex((r) => r.path === sel.path));

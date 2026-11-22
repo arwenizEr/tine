@@ -117,6 +117,104 @@ impl Watcher {
     }
 }
 
+const GIT_DEBOUNCE: Duration = Duration::from_millis(200);
+
+/// Is this event (relative to the repo root) something that can change `git status`?
+/// Inside `.git` only the index, HEAD and refs count; in the working tree, ignored files don't.
+fn affects_status(repo: Option<&git2::Repository>, rel: &Path) -> bool {
+    let mut parts = rel.components().map(|c| c.as_os_str().to_string_lossy());
+    match parts.next().as_deref() {
+        Some(".git") => {
+            let next = parts.next();
+            let name = rel
+                .file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default();
+            !name.ends_with(".lock")
+                && matches!(
+                    next.as_deref(),
+                    Some("index" | "HEAD" | "packed-refs" | "refs")
+                )
+        }
+        Some(_) => !repo.is_some_and(|r| r.is_path_ignored(rel).unwrap_or(false)),
+        None => false,
+    }
+}
+
+/// Watches whole repositories recursively and reports each changed repo, debounced to 200 ms,
+/// so the git panel follows edits anywhere in the working tree, not only in expanded folders.
+pub struct RepoWatcher {
+    inner: Mutex<RecommendedWatcher>,
+    /// Canonical repo root -> root as the frontend named it.
+    repos: Arc<Mutex<HashMap<PathBuf, String>>>,
+}
+
+impl RepoWatcher {
+    pub fn new(on_change: impl Fn(String) + Send + 'static) -> Result<Self, AppError> {
+        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let inner = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                for p in event.paths {
+                    let _ = tx.send(p);
+                }
+            }
+        })
+        .map_err(AppError::io)?;
+        let repos: Arc<Mutex<HashMap<PathBuf, String>>> = Arc::default();
+
+        let watched = repos.clone();
+        thread::spawn(move || {
+            while let Ok(first) = rx.recv() {
+                let mut batch = vec![first];
+                let deadline = Instant::now() + GIT_DEBOUNCE;
+                while let Ok(p) =
+                    rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                {
+                    batch.push(p);
+                }
+                let roots: Vec<(PathBuf, String)> = watched
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                for (canonical, root) in roots {
+                    let repo = git2::Repository::open(&canonical).ok();
+                    let hit = batch
+                        .iter()
+                        .filter_map(|p| p.strip_prefix(&canonical).ok())
+                        .any(|rel| affects_status(repo.as_ref(), rel));
+                    if hit {
+                        on_change(root);
+                    }
+                }
+            }
+        });
+        Ok(Self {
+            inner: Mutex::new(inner),
+            repos,
+        })
+    }
+
+    /// Idempotent; a repo stays watched for the rest of the session.
+    // shortcut: on Linux, inotify adds one watch per folder (node_modules too) and can hit
+    // fs.inotify.max_user_watches in huge repos; switch to watching only .git plus expanded folders then.
+    pub fn watch(&self, root: &str) -> Result<(), AppError> {
+        let canonical = std::fs::canonicalize(root)?;
+        let mut repos = self.repos.lock().unwrap();
+        if repos.contains_key(&canonical) {
+            return Ok(());
+        }
+        self.inner
+            .lock()
+            .unwrap()
+            .watch(&canonical, RecursiveMode::Recursive)
+            .map_err(AppError::io)?;
+        repos.insert(canonical, root.to_string());
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +273,37 @@ mod tests {
         w.unwatch(&root).unwrap();
         assert!(w.roots.lock().unwrap().is_empty());
         assert_eq!(w.unwatch(&root).unwrap_err().code, "not_found");
+    }
+
+    #[test]
+    fn git_relevance_of_paths() {
+        let (t, r) = crate::git::tests::repo();
+        std::fs::write(t.path(".gitignore"), "target/\n").unwrap();
+        let yes = |p: &str| affects_status(Some(&r), Path::new(p));
+        assert!(yes("src/main.rs"));
+        assert!(yes(".git/index"));
+        assert!(yes(".git/HEAD"));
+        assert!(yes(".git/refs/heads/main"));
+        assert!(!yes(".git/index.lock"));
+        assert!(!yes(".git/objects/ab/cdef"));
+        assert!(!yes("target/debug/app"));
+    }
+
+    #[test]
+    fn repo_watcher_reports_working_tree_edits() {
+        let (t, _r) = crate::git::tests::repo();
+        let (tx, rx) = mpsc::channel();
+        let w = RepoWatcher::new(move |repo| {
+            let _ = tx.send(repo);
+        })
+        .unwrap();
+        let root = t.0.to_string_lossy().into_owned();
+        w.watch(&root).unwrap();
+        w.watch(&root).unwrap(); // idempotent
+        thread::sleep(Duration::from_millis(300));
+        std::fs::create_dir(t.path("deep")).unwrap();
+        std::fs::write(t.path("deep/file.txt"), "x").unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), root);
     }
 
     #[test]

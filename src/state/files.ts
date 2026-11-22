@@ -13,8 +13,12 @@ export const selected = signal<Selection | null>(null);
 /** Quick Look overlay over the window, following the selection. */
 export const quickLook = signal(false);
 
-/** A file or folder shown in the viewer. At most one doc is the replaceable preview slot. */
-export type Doc = { id: number; path: string; kind: "file" | "dir"; preview: boolean; dirty: boolean };
+/**
+ * A file, folder or git diff shown in the viewer. At most one doc is the replaceable preview
+ * slot. `staged` only matters for diffs: the index against HEAD, or the working tree against the index.
+ */
+export type DocKind = "file" | "dir" | "diff";
+export type Doc = { id: number; path: string; kind: DocKind; staged: boolean; preview: boolean; dirty: boolean };
 export const docs = signal<Doc[]>([]);
 export const activeDocId = signal<number | null>(null);
 
@@ -26,11 +30,12 @@ export const focusDoc = signal<number | null>(null);
 
 let nextDocId = 0;
 
-export type OpenOptions = { preview?: boolean; line?: number; col?: number; focus?: boolean };
+export type OpenOptions = { preview?: boolean; line?: number; col?: number; focus?: boolean; staged?: boolean };
 
-export function openDoc(path: string, kind: "file" | "dir", opts: OpenOptions = {}): void {
+export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): void {
   const list = docs.get();
-  let doc = list.find((d) => d.path === path);
+  const staged = kind === "diff" && !!opts.staged;
+  let doc = list.find((d) => d.path === path && d.kind === kind && d.staged === staged);
   if (doc) {
     if (!opts.preview && doc.preview) {
       doc = { ...doc, preview: false };
@@ -38,7 +43,7 @@ export function openDoc(path: string, kind: "file" | "dir", opts: OpenOptions = 
       docs.set(list.map((d) => (d.id === promoted.id ? promoted : d)));
     }
   } else {
-    doc = { id: ++nextDocId, path, kind, preview: !!opts.preview, dirty: false };
+    doc = { id: ++nextDocId, path, kind, staged, preview: !!opts.preview, dirty: false };
     const slot = opts.preview ? list.findIndex((d) => d.preview) : -1;
     docs.set(slot >= 0 ? list.with(slot, doc) : [...list, doc]);
   }

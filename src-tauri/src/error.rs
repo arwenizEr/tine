@@ -33,3 +33,9 @@ impl From<std::io::Error> for AppError {
         Self::new(code, e)
     }
 }
+
+impl From<git2::Error> for AppError {
+    fn from(e: git2::Error) -> Self {
+        Self::new("git", e.message())
+    }
+}

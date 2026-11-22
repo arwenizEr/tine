@@ -1,5 +1,6 @@
 mod error;
 mod fs;
+mod git;
 mod pty;
 mod watcher;
 
@@ -9,7 +10,7 @@ use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
-use watcher::Watcher;
+use watcher::{RepoWatcher, Watcher};
 
 /// The IPC contract says every path is absolute; reject anything else at the boundary.
 fn abs(path: &str) -> Result<&Path, AppError> {
@@ -28,6 +29,11 @@ fn abs(path: &str) -> Result<&Path, AppError> {
 struct PtyExit {
     pty_id: u32,
     code: Option<i32>,
+}
+
+#[derive(Clone, Serialize)]
+struct GitChanged {
+    repo: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -149,6 +155,40 @@ async fn fs_unwatch(watcher: State<'_, Watcher>, root: String) -> Result<(), App
     watcher.unwatch(&root)
 }
 
+/// The first status call for a repo also starts watching it, so `git-changed` follows.
+#[tauri::command(rename_all = "snake_case")]
+async fn git_status(repos: State<'_, RepoWatcher>, repo: String) -> Result<git::Status, AppError> {
+    let status = git::status(abs(&repo)?)?;
+    if let Err(e) = repos.watch(&repo) {
+        eprintln!("not watching {repo}: {}", e.message);
+    }
+    Ok(status)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn git_diff_file(
+    repo: String,
+    path: String,
+    staged: bool,
+) -> Result<git::FileDiff, AppError> {
+    git::diff_file(abs(&repo)?, abs(&path)?, staged)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn git_stage(repo: String, paths: Vec<String>) -> Result<(), AppError> {
+    git::stage(abs(&repo)?, &paths)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn git_unstage(repo: String, paths: Vec<String>) -> Result<(), AppError> {
+    git::unstage(abs(&repo)?, &paths)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn git_commit(repo: String, message: String) -> Result<String, AppError> {
+    git::commit(abs(&repo)?, &message)
+}
+
 /// Only links meant for a browser or mail client; never `file:` or custom schemes from untrusted output.
 fn is_openable_url(url: &str) -> bool {
     ["https://", "http://", "mailto:"].iter().any(|p| {
@@ -247,6 +287,13 @@ pub fn run() {
                 })
                 .map_err(|e| e.message)?,
             );
+            let handle = app.handle().clone();
+            app.manage(
+                RepoWatcher::new(move |repo| {
+                    let _ = handle.emit("git-changed", GitChanged { repo });
+                })
+                .map_err(|e| e.message)?,
+            );
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -268,6 +315,11 @@ pub fn run() {
             fs_reveal,
             fs_watch,
             fs_unwatch,
+            git_status,
+            git_diff_file,
+            git_stage,
+            git_unstage,
+            git_commit,
             open_url
         ]);
     #[cfg(target_os = "macos")]
