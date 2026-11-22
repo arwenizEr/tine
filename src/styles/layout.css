@@ -1066,34 +1066,6 @@ body {
   color: #e06c75;
 }
 
-.block-actions {
-  position: absolute;
-  z-index: 4;
-  right: 18px;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  transform: translateY(-50%);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: var(--shadow);
-}
-
-.block-actions button {
-  border: 0;
-  background: none;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  color: var(--fg-muted);
-}
-
-.block-actions button:hover {
-  background: var(--border);
-  color: var(--fg);
-}
-
 .git-scope {
   flex: none;
   display: flex;

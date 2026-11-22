@@ -103,24 +103,6 @@ export class Blocks {
     });
   }
 
-  /** The block whose lines include buffer row `y`. */
-  at(y: number): Block | undefined {
-    return this.list.findLast((b) => b.prompt.line <= y && (b.end === null || y < b.end.line));
-  }
-
-  /** Output lines of a block as text, with soft-wrapped lines joined back together. */
-  output(block: Block): string {
-    const buf = this.term.buffer.active;
-    const last = (block.end?.line ?? buf.length) - 1;
-    let text = "";
-    for (let y = block.output.line; y <= last; y++) {
-      const line = buf.getLine(y);
-      if (!line) break;
-      text += line.translateToString(true);
-      if (!(y < last && buf.getLine(y + 1)?.isWrapped)) text += "\n";
-    }
-    return text.replace(/\n+$/, "\n");
-  }
 
   /** Scrolls to the previous or next block's prompt from the top of the viewport. */
   jump(direction: -1 | 1): void {

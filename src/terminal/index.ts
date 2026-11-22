@@ -9,10 +9,9 @@ import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../pat
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { activeTabId, setTabActivity, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
-import { Blocks, type Block } from "./blocks.ts";
+import { Blocks } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
-import { toast } from "../ui/toast.ts";
 
 type Session = {
   id: number;
@@ -298,54 +297,6 @@ export function mount(root: HTMLElement): TerminalActions {
     return null;
   };
 
-  // Block actions appear over the block under the pointer.
-  const actions = document.createElement("div");
-  actions.className = "block-actions";
-  actions.hidden = true;
-  let hovered: { session: Session; block: Block } | null = null;
-  const actionButton = (label: string, run: (s: Session, b: Block) => void) => {
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.onmousedown = (e) => e.preventDefault(); // keep focus in the terminal
-    b.onclick = () => hovered && run(hovered.session, hovered.block);
-    return b;
-  };
-  actions.append(
-    actionButton("Copy Command", (_s, b) => void navigator.clipboard.writeText(b.command)),
-    actionButton("Copy Output", (s, b) => void navigator.clipboard.writeText(s.blocks.output(b))),
-    actionButton("Rerun", (s, b) => {
-      const why = runCommand(s, b.command);
-      if (why) toast(why);
-    }),
-  );
-  host.append(actions);
-
-  let hoverQueued = false;
-  const onHover = (e: MouseEvent) => {
-    if (hoverQueued) return;
-    hoverQueued = true;
-    requestAnimationFrame(() => {
-      hoverQueued = false;
-      const s = active();
-      const screen = s?.el.querySelector(".xterm-screen");
-      if (!s || !screen || s.term.buffer.active.type === "alternate") return void (actions.hidden = true);
-      const rect = screen.getBoundingClientRect();
-      const cell = rect.height / s.term.rows;
-      const top = s.term.buffer.active.viewportY;
-      const block = s.blocks.at(top + Math.floor((e.clientY - rect.top) / cell));
-      if (!block || !block.command) return void (actions.hidden = true);
-      hovered = { session: s, block };
-      // Pin to the block's first visible line.
-      const row = Math.max(0, block.prompt.line - top);
-      actions.style.top = `${rect.top - host.getBoundingClientRect().top + row * cell}px`;
-      actions.hidden = false;
-    });
-  };
-  host.addEventListener("mousemove", onHover);
-  host.addEventListener("mouseleave", (e) => {
-    if (!actions.contains(e.relatedTarget as Node)) actions.hidden = true;
-  });
-
   commands.cdInTerminal = (dir) => {
     const s = active();
     return s ? runCommand(s, ` cd -- ${shellQuote(dir)}`) : "No terminal";
@@ -384,10 +335,7 @@ export function mount(root: HTMLElement): TerminalActions {
       if (s) void navigator.clipboard.readText().then((text) => s.term.paste(text));
     },
     find: () => search.open(),
-    block: (direction) => {
-      actions.hidden = true;
-      active()?.blocks.jump(direction);
-    },
+    block: (direction) => active()?.blocks.jump(direction),
     send: (data) => {
       const s = active();
       if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});
