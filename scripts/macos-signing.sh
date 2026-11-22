@@ -4,7 +4,8 @@
 # you grant (Desktop, Documents, Downloads) across rebuilds instead of asking again each time.
 # Nothing leaves your machine; the certificate is only trusted for code signing, by you.
 #
-# Usage: sh scripts/macos-signing.sh     (asks for your password once, to trust the certificate)
+# Usage: sh scripts/macos-signing.sh     (asks for your password: to trust the certificate, and to
+#        let codesign use its key without a keychain prompt on every build)
 # Undo:  delete "<app name> local signing" in Keychain Access.
 set -eu
 
@@ -13,8 +14,17 @@ cd "$(dirname "$0")/.."
 NAME="$(node -p "require('./src-tauri/tauri.conf.json').productName") local signing"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
+# Lets Apple's signing tools use the key silently. Without it, recent macOS asks for the
+# keychain password on every build, once per signed file. Prompts for your login password.
+allow_codesign() {
+  echo "Allowing codesign to use the key without asking (enter your login password)..."
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -l "$NAME" "$KEYCHAIN" >/dev/null
+}
+
 if security find-identity -v -p codesigning | grep -q "\"$NAME\""; then
-  echo "Already set up: \"$NAME\". Build with: npm run app"
+  echo "Certificate \"$NAME\" already exists."
+  allow_codesign
+  echo "Done. Build with: npm run app"
   exit 0
 fi
 
@@ -48,6 +58,7 @@ openssl pkcs12 -export $LEGACY -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -name "
 security import "$TMP/cert.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign >/dev/null
 echo "Trusting the certificate for code signing (macOS asks for your password)..."
 security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$TMP/cert.pem"
+allow_codesign
 
 security find-identity -v -p codesigning | grep "\"$NAME\""
 echo "Done. Build with: npm run app"
