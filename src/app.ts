@@ -175,8 +175,10 @@ export function mountApp(root: HTMLElement): () => void {
 
   const unsubs = [
     followMode.subscribe((on) => follow.setAttribute("aria-pressed", String(on))),
+    // Always visible so it can be found; it only works inside a git repository.
     repo.subscribe((r) => {
-      follow.hidden = !r;
+      follow.disabled = !r;
+      follow.title = r ? "Show each file's diff as it changes" : "Follow works inside a git repository: cd into one first";
     }),
     // On a narrow window, browsing the tree opens the drawer so the preview is visible.
     selected.subscribe((sel) => {

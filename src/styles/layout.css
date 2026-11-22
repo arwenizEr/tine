@@ -992,6 +992,12 @@ body {
   color: var(--fg);
 }
 
+.follow-toggle:disabled {
+  opacity: 0.45;
+  background: none;
+  color: var(--fg-muted);
+}
+
 .follow-toggle[aria-pressed="true"] {
   background: var(--selection);
   color: var(--fg);
