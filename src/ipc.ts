@@ -172,7 +172,7 @@ export const confirmDialog = (title: string, message: string) => tauri.dialog.as
 export const logError = (message: string) => void invoke("log_error", { message }).catch(() => {});
 
 /** macOS: whether tine has Full Disk Access, and the System Settings page that grants it. */
-export const fullDiskAccess = () => invoke<boolean>("full_disk_access");
+const fullDiskAccess = () => invoke<boolean>("full_disk_access");
 export const openFullDiskAccessSettings = () => invoke<void>("open_full_disk_access_settings");
 
 /** Asks once, at first start on macOS, for the one grant that covers every protected folder. */

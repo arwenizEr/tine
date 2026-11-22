@@ -115,7 +115,7 @@ export function mount(parent: HTMLElement): () => void {
     },
   });
 
-  /** Typing in the preview slot turns it into a normal tab, as the plan's preview rules say. */
+  /** Typing in the preview slot turns it into a normal tab. */
   const edited = (id: number, l: TextDoc) => {
     const doc = docOf(id);
     if (!doc) return;

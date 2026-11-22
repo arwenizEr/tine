@@ -1,7 +1,7 @@
 // Builds the app bundle (`npm run app`). On macOS it signs with "<name> local signing" when
 // scripts/macos-signing.sh has created that certificate, so macOS keeps privacy permissions
-// across rebuilds; otherwise the build is ad-hoc signed, as before. An APPLE_SIGNING_IDENTITY
-// already in the environment (a real Developer ID, in CI) always wins.
+// across rebuilds; otherwise the build is ad-hoc signed. An APPLE_SIGNING_IDENTITY already in
+// the environment always wins.
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 

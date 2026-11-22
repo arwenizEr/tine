@@ -13,7 +13,7 @@ use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use watcher::{RepoWatcher, Watcher};
 
-/// The IPC contract says every path is absolute; reject anything else at the boundary.
+/// Every path the frontend sends must be absolute; anything else is rejected here.
 fn abs(path: &str) -> Result<&Path, AppError> {
     let p = Path::new(path);
     if p.is_absolute() {
@@ -253,14 +253,14 @@ async fn open_url(url: String) -> Result<(), AppError> {
 
 /// Frontend errors, written to stderr: the release webview has no console to read them from.
 #[tauri::command]
-fn log_error(message: String) {
+async fn log_error(message: String) {
     eprintln!("[tine frontend] {message}");
 }
 
 /// Whether macOS gave tine Full Disk Access. Without it, macOS asks separately for Desktop,
 /// Documents, Downloads and other protected places. Always true elsewhere.
 #[tauri::command]
-fn full_disk_access() -> bool {
+async fn full_disk_access() -> bool {
     // shortcut: the TCC database is readable only with Full Disk Access; the usual check, as macOS has no API for it.
     !cfg!(target_os = "macos")
         || std::env::var_os("HOME").is_some_and(|home| {
@@ -273,7 +273,7 @@ fn full_disk_access() -> bool {
 
 /// Opens System Settings at Privacy & Security > Full Disk Access (macOS only).
 #[tauri::command]
-fn open_full_disk_access_settings() -> Result<(), AppError> {
+async fn open_full_disk_access_settings() -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     std::process::Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")

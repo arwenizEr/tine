@@ -105,11 +105,13 @@ On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the 
 | Space | Quick Look the selected file |
 | Cmd+Backspace | Move the selected file to the Trash |
 
-App shortcuts can be changed in the settings.
+Shortcuts can be changed in `settings.toml` (see [Settings](#settings)).
 
 ## Settings
 
-Click **⚙ Settings** at the right end of the terminal tabs (or choose tine → Settings… in the menu bar, Cmd+,) to pick the font, font size, theme and shell from lists; changes apply at once. Everything lives in `~/.config/tine/settings.toml`, created on first start with every option commented out, and you can edit it directly (shortcuts are set only there): open it from the settings window, or with Cmd+P → `> Open Settings File`. Saved changes apply at once.
+Click **⚙ Settings** at the right end of the terminal tabs (or press Cmd+,) to pick the font, font size, theme and shell. Changes apply at once.
+
+Everything is stored in `~/.config/tine/settings.toml`, which is created on first start with every option commented out. Shortcuts are changed only there. Open it from the settings window, or with Cmd+P → `> Open Settings File`; saved edits apply at once.
 
 ```toml
 font_family = "JetBrains Mono, Menlo, monospace"
