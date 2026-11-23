@@ -17,6 +17,7 @@ export type KeyAction =
   | { type: "sendSelection" }
   | { type: "split" }
   | { type: "settings" }
+  | { type: "search" }
   | { type: "send"; data: string };
 
 export type KeyLike = {
@@ -49,6 +50,7 @@ export const ACTIONS = {
   sendSelection: { type: "sendSelection" },
   split: { type: "split" },
   settings: { type: "settings" },
+  search: { type: "search" },
 } satisfies Record<string, KeyAction>;
 type ActionName = keyof typeof ACTIONS;
 
@@ -66,6 +68,7 @@ const MAC: Partial<Record<ActionName, string>> = {
   nextBlock: "cmd+down",
   sendSelection: "cmd+l",
   split: "cmd+d",
+  search: "cmd+shift+f",
 };
 const LINUX: Partial<Record<ActionName, string>> = {
   newTab: "ctrl+shift+t",
@@ -79,6 +82,7 @@ const LINUX: Partial<Record<ActionName, string>> = {
   nextBlock: "ctrl+shift+down",
   sendSelection: "ctrl+shift+l",
   split: "ctrl+shift+d",
+  search: "ctrl+alt+f", // Ctrl+Shift+F is find in the terminal
   copy: "ctrl+shift+c",
   paste: "ctrl+shift+v",
   newFile: "ctrl+shift+n",

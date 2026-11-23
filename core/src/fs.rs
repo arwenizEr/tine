@@ -154,6 +154,56 @@ pub struct FileText {
     pub mtime: u64,
 }
 
+/// One line that contains the search text. `line` and `col` count from 1; `col` in characters.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Match {
+    pub path: String,
+    pub line: usize,
+    pub col: usize,
+    pub text: String,
+}
+
+/// Lines containing `query` (ignoring case) in the files `find_files` lists under `root`.
+/// Skips binary files and files over the read cap; stops at `limit` matches.
+pub fn search(root: &Path, query: &str, limit: usize) -> Result<Vec<Match>, AppError> {
+    let needle = query.to_lowercase();
+    if needle.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for path in find_files(root, 50_000)? {
+        let Ok(meta) = fs::metadata(&path) else {
+            continue;
+        };
+        if meta.len() > READ_CAP {
+            continue;
+        }
+        let Ok(bytes) = fs::read(&path) else { continue };
+        if bytes[..bytes.len().min(8192)].contains(&0) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        for (i, line) in text.lines().enumerate() {
+            let lower = line.to_lowercase();
+            let Some(at) = lower.find(&needle) else {
+                continue;
+            };
+            let trimmed = line.trim_start();
+            out.push(Match {
+                path: path.clone(),
+                line: i + 1,
+                // Lowercasing can change byte lengths, so count characters in the lowered line.
+                col: lower[..at].chars().count() + 1,
+                text: trimmed.chars().take(200).collect(),
+            });
+            if out.len() >= limit {
+                return Ok(out);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Image previews: these formats only, up to 20 MB, as raw bytes for the viewer.
 const IMAGE_EXT: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
 const IMAGE_CAP: u64 = 20 * 1024 * 1024;
@@ -373,6 +423,26 @@ pub mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn search_finds_lines_ignoring_case_and_skips_binary() {
+        let t = TempDir::new();
+        std::fs::write(t.path("a.rs"), "fn main() {\n    let Total = 1;\n}\n").unwrap();
+        std::fs::write(t.path("b.bin"), b"total\0").unwrap();
+        let found = search(&t.0, "total", 10).unwrap();
+        assert_eq!(
+            found,
+            vec![Match {
+                path: t.path("a.rs").to_string_lossy().into_owned(),
+                line: 2,
+                col: 9,
+                text: "let Total = 1;".into(),
+            }]
+        );
+        assert!(search(&t.0, "  ", 10).unwrap().is_empty());
+        std::fs::write(t.path("c.txt"), "total\ntotal\ntotal\n").unwrap();
+        assert_eq!(search(&t.0, "total", 2).unwrap().len(), 2);
     }
 
     #[test]

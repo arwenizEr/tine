@@ -129,6 +129,12 @@ async fn fs_find_files(root: String) -> Result<Vec<String>, AppError> {
     fs::find_files(abs(&root)?, 50_000)
 }
 
+/// Text search for the palette's search mode: up to 500 matching lines under `root`.
+#[tauri::command(rename_all = "snake_case")]
+async fn fs_search(root: String, query: String) -> Result<Vec<fs::Match>, AppError> {
+    fs::search(abs(&root)?, &query, 500)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn fs_read_file(path: String) -> Result<fs::FileText, AppError> {
     fs::read_file(abs(&path)?)
@@ -378,6 +384,7 @@ pub fn run() {
             fs_list_dir,
             fs_find_files,
             fs_read_file,
+            fs_search,
             fs_read_image,
             fs_stat,
             fs_write_file,

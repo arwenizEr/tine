@@ -150,6 +150,7 @@ export function mountApp(root: HTMLElement): () => void {
     { label: "Show Changes", run: () => (sidebarView.set("git"), sidebarVisible.set(true)) },
     { label: "Toggle Follow Mode", run: () => followMode.set(!followMode.get()) },
     { label: "Find in Terminal", run: () => term.find() },
+    { label: "Search in Files…", run: () => palette.open("search") },
     { label: "Clear Terminal", run: () => term.clear() },
     ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
     { label: "Settings…", run: () => openSettings(openSettingsFile) },
@@ -222,6 +223,8 @@ export function mountApp(root: HTMLElement): () => void {
         return term.block(action.direction);
       case "palette":
         return palette.open();
+      case "search":
+        return palette.open("search");
       case "split":
         return term.split();
       case "settings":

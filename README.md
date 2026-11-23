@@ -54,6 +54,7 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 - Double-click a file to edit it, Cmd+S to save. tine never overwrites a change an agent made meanwhile: you choose to reload or keep your edits.
 - Double-click a folder to `cd` the terminal there; drag a file into the terminal to paste its path.
 - Create, rename and move to Trash from the tree's context menu.
+- **Search in files:** Cmd+Shift+F finds a text in every file git does not ignore and opens the match at its line.
 
 ### Fits any screen
 - Resizable panels, each of which can be hidden.
@@ -92,6 +93,7 @@ On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the 
 | Cmd+1 … Cmd+9 | Go to tab |
 | Cmd+D | Split: open a tab beside this one, or back to one tab |
 | Cmd+P | Command palette: find a file, or type `>` for commands |
+| Cmd+Shift+F | Search in files |
 | Cmd+K | Clear the terminal |
 | Cmd+F | Find in the terminal (in the editor: find in the file) |
 | Cmd+Up / Cmd+Down | Previous / next command block |

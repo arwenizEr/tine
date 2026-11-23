@@ -88,6 +88,9 @@ export const fsListDir = (path: string) => invoke<Entry[]>("fs_list_dir", { path
 export const fsReadFile = (path: string) => invoke<FileText>("fs_read_file", { path });
 /** Every file under `root` that git does not ignore (up to 50,000), for the command palette. */
 export const fsFindFiles = (root: string) => invoke<string[]>("fs_find_files", { root });
+export type Match = { path: string; line: number; col: number; text: string };
+/** Lines containing `query` (any case) in those files, up to 500. */
+export const fsSearch = (root: string, query: string) => invoke<Match[]>("fs_search", { root, query });
 export const fsStat = (path: string) => invoke<Stat>("fs_stat", { path });
 export const fsWriteFile = (path: string, text: string, expectedMtime?: number) =>
   invoke<number>("fs_write_file", { path, text, expected_mtime: expectedMtime });

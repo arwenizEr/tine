@@ -37,7 +37,8 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
-#          find, palette, copy, paste, prevBlock, nextBlock, sendSelection, split, settings
+#          find, palette, copy, paste, prevBlock, nextBlock, sendSelection, split, settings,
+#          search
 [keybindings]
 # newTab = "cmd+t"
 # palette = "cmd+p"

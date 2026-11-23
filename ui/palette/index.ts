@@ -1,4 +1,4 @@
-import { errorMessage, fsFindFiles } from "../ipc.ts";
+import { errorMessage, fsFindFiles, fsSearch } from "../ipc.ts";
 import { basename, dirname } from "../paths.ts";
 import { openDoc, treeRoot } from "../state/files.ts";
 import { repo } from "../state/git.ts";
@@ -10,7 +10,8 @@ const LIMIT = 50;
 
 /**
  * Cmd+P: type to open a file from the repo (or the tree's folder); start with ">" for app
- * actions. Arrow keys pick, Enter runs, Esc closes.
+ * actions. Cmd+Shift+F opens it in search mode: lines containing the text, across the files.
+ * Arrow keys pick, Enter runs, Esc closes.
  */
 export function mountPalette(parent: HTMLElement, actions: () => PaletteAction[]) {
   const backdrop = document.createElement("div");
@@ -40,6 +41,9 @@ export function mountPalette(parent: HTMLElement, actions: () => PaletteAction[]
   let items: { label: string; detail: string; run: () => void }[] = [];
   let selectedIndex = 0;
   let restore: HTMLElement | null = null;
+  let searching = false;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let searchToken = 0;
 
   const render = () => {
     list.replaceChildren(
@@ -62,7 +66,44 @@ export function mountPalette(parent: HTMLElement, actions: () => PaletteAction[]
     list.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
   };
 
+  /** Search mode: asks the core after a pause in typing; a newer query drops older answers. */
+  const search = () => {
+    clearTimeout(searchTimer);
+    const query = input.value;
+    const token = ++searchToken;
+    selectedIndex = 0;
+    if (!root || query.trim().length < 2) {
+      items = [];
+      status = !root ? "No folder yet" : "Type at least 2 characters";
+      return render();
+    }
+    const where = root;
+    searchTimer = setTimeout(() => {
+      status = "Searching…";
+      render();
+      fsSearch(where, query).then(
+        (matches) => {
+          if (token !== searchToken) return;
+          items = matches.map((m) => ({
+            label: m.text,
+            detail: `${m.path.slice(where.length + 1)}:${m.line}`,
+            run: () => openDoc(m.path, "file", { line: m.line, col: m.col, focus: true }),
+          }));
+          status = items.length ? "" : "No matches";
+          render();
+        },
+        (e) => {
+          if (token !== searchToken) return;
+          items = [];
+          status = errorMessage(e);
+          render();
+        },
+      );
+    }, 200);
+  };
+
   const update = () => {
+    if (searching) return search();
     const text = input.value;
     selectedIndex = 0;
     if (text.startsWith(">")) {
@@ -110,10 +151,13 @@ export function mountPalette(parent: HTMLElement, actions: () => PaletteAction[]
   };
 
   return {
-    open(commandsOnly = false) {
+    open(mode: "files" | "search" = "files") {
       restore = document.activeElement as HTMLElement | null;
       backdrop.hidden = false;
-      input.value = commandsOnly ? ">" : "";
+      searching = mode === "search";
+      box.setAttribute("aria-label", searching ? "Search in files" : "Command palette");
+      input.placeholder = searching ? "Search in files" : "Open a file, or type > for commands";
+      input.value = "";
       input.focus();
       // Re-index on every open so new files show up; the last list serves until it arrives.
       const where = repo.get() ?? treeRoot.get();
@@ -127,7 +171,7 @@ export function mountPalette(parent: HTMLElement, actions: () => PaletteAction[]
             if (root !== asked) return;
             files = found;
             status = "";
-            if (!backdrop.hidden && !input.value.startsWith(">")) update();
+            if (!backdrop.hidden && !searching && !input.value.startsWith(">")) update();
           },
           (e) => {
             status = errorMessage(e);
