@@ -170,7 +170,8 @@ export const settingsSet = (key: string, value: string | number | string[] | nul
 /** Opens a file at a line in the editor chosen in the settings (VS Code by default). */
 export const openInEditor = (path: string, line: number, col: number) => invoke<void>("open_in_editor", { path, line, col });
 
-type Rect = { x: number; y: number; width: number; height: number };
+/** CSS pixels; `viewport` is the page height, which Rust needs to find CSS y=0 in the window. */
+type Rect = { x: number; y: number; width: number; height: number; viewport: number };
 /** Shows an http(s) page in the web panel's webview, laid over `rect` (CSS pixels). */
 export const webShow = (url: string, rect: Rect) => invoke<void>("web_show", { url, ...rect });
 export const webPlace = (rect: Rect & { hidden: boolean }) => invoke<void>("web_place", rect);

@@ -63,7 +63,7 @@ export function mount(parent: HTMLElement): () => void {
 
   const rect = () => {
     const r = slot.getBoundingClientRect();
-    return { x: r.left, y: r.top, width: r.width, height: r.height };
+    return { x: r.left, y: r.top, width: r.width, height: r.height, viewport: innerHeight };
   };
 
   let queued = false;

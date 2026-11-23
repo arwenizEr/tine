@@ -281,10 +281,27 @@ fn web_err(e: tauri::Error) -> AppError {
     AppError::new("web", e.to_string())
 }
 
-/// `x, y, width, height` in CSS pixels, which match the window's logical pixels.
-fn web_rect(x: f64, y: f64, width: f64, height: f64) -> tauri::Rect {
+/// Where the slot is in the window. `x, y, width, height` are CSS pixels; `viewport` is the
+/// page's height. On macOS the main webview runs under the title bar and WebKit starts the
+/// page below it, so the webview's height minus `viewport` is how far CSS y=0 sits down.
+fn web_rect(
+    app: &AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewport: f64,
+) -> tauri::Rect {
+    let top = app
+        .get_webview("main")
+        .and_then(|m| {
+            let scale = m.window().scale_factor().ok()?;
+            Some(m.size().ok()?.to_logical::<f64>(scale).height - viewport)
+        })
+        .unwrap_or(0.0)
+        .max(0.0);
     tauri::Rect {
-        position: tauri::LogicalPosition::new(x, y).into(),
+        position: tauri::LogicalPosition::new(x, y + top).into(),
         size: tauri::LogicalSize::new(width.max(1.0), height.max(1.0)).into(),
     }
 }
@@ -297,18 +314,19 @@ async fn web_show(
     y: f64,
     width: f64,
     height: f64,
+    viewport: f64,
 ) -> Result<(), AppError> {
     let url = web_url(&url)?;
     if let Some(web) = app.get_webview(WEB) {
         web.navigate(url).map_err(web_err)?;
-        web.set_bounds(web_rect(x, y, width, height))
+        web.set_bounds(web_rect(&app, x, y, width, height, viewport))
             .map_err(web_err)?;
         return web.show().map_err(web_err);
     }
     let window = app
         .get_window("main")
         .ok_or_else(|| AppError::new("web", "no main window"))?;
-    let rect = web_rect(x, y, width, height);
+    let rect = web_rect(&app, x, y, width, height, viewport);
     window
         .add_child(
             tauri::webview::WebviewBuilder::new(WEB, tauri::WebviewUrl::External(url)),
@@ -328,6 +346,7 @@ async fn web_place(
     y: f64,
     width: f64,
     height: f64,
+    viewport: f64,
     hidden: bool,
 ) -> Result<(), AppError> {
     let Some(web) = app.get_webview(WEB) else {
@@ -336,7 +355,7 @@ async fn web_place(
     if hidden {
         return web.hide().map_err(web_err);
     }
-    web.set_bounds(web_rect(x, y, width, height))
+    web.set_bounds(web_rect(&app, x, y, width, height, viewport))
         .map_err(web_err)?;
     web.show().map_err(web_err)
 }
