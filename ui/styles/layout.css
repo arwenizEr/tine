@@ -207,9 +207,15 @@ button {
   background: var(--term-bg);
 }
 
-.terminal {
+/* Only our pane: xterm.js gives its own element the class "terminal" too. */
+.terminals > .terminal {
   position: absolute;
   inset: 4px 0 0 8px;
+}
+
+/* xterm paints the space under the last row black by default. */
+.terminal .xterm-viewport {
+  background-color: var(--term-bg);
 }
 
 /* Split: the left pane takes the left half, the right pane the rest, behind a divider. */
