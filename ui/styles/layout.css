@@ -946,6 +946,36 @@ body {
   min-height: 100%;
 }
 
+/* Diffs read line by line: a + or − column before every line, coloured like the tree. */
+.doc-diff .cm-line,
+.doc-diff .cm-deletedChunk .cm-deletedLine {
+  position: relative;
+  padding-left: calc(6px + 2ch);
+}
+
+.doc-diff .cm-deletedChunk {
+  padding-left: 0;
+}
+
+.doc-diff .cm-merge-b .cm-changedLine::before,
+.doc-diff .cm-merge-a .cm-changedLine::before,
+.doc-diff .cm-deletedChunk .cm-deletedLine::before {
+  position: absolute;
+  left: 4px;
+  font-weight: 600;
+}
+
+.doc-diff .cm-merge-b .cm-changedLine::before {
+  content: "+";
+  color: var(--git-added);
+}
+
+.doc-diff .cm-merge-a .cm-changedLine::before,
+.doc-diff .cm-deletedChunk .cm-deletedLine::before {
+  content: "−";
+  color: var(--git-deleted);
+}
+
 /* Status colours, shared by the tree and the git panel. */
 .git-modified .tree-name,
 .git-row.git-modified .git-letter,

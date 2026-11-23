@@ -458,12 +458,12 @@ export function mount(parent: HTMLElement): () => void {
           parent: diffHost,
           state: EditorState.create({
             doc: l.new,
-            extensions: [...extensions, unifiedMergeView({ original: l.old, mergeControls: false, collapseUnchanged })],
+            extensions: [...extensions, unifiedMergeView({ original: l.old, mergeControls: false, highlightChanges: false, collapseUnchanged })],
           }),
         });
         diffShown.destroy = () => v.destroy();
       } else {
-        const v = new MergeView({ a: { doc: l.old, extensions }, b: { doc: l.new, extensions }, parent: diffHost, collapseUnchanged });
+        const v = new MergeView({ a: { doc: l.old, extensions }, b: { doc: l.new, extensions }, parent: diffHost, highlightChanges: false, collapseUnchanged });
         diffShown.destroy = () => v.destroy();
       }
     });
