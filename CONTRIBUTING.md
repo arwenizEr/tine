@@ -17,7 +17,16 @@ npm install
 npm run tauri dev
 ```
 
-The [README](README.md#development) explains the layout: `ui/` is the interface, `core/` the Rust engine, and they talk only through `ui/ipc.ts` ↔ `core/src/lib.rs`.
+## Project layout
+
+| Path | Contents |
+| --- | --- |
+| `ui/` | Interface in plain TypeScript and CSS, bundled with esbuild: terminal (xterm.js), file tree, git panel, viewer (CodeMirror 6), web panel |
+| `ui/ipc.ts` | The only file that calls the core |
+| `core/` | Rust engine on Tauri 2: PTYs (`portable-pty`), git (`git2`), file watching (`notify`), settings |
+| `core/src/lib.rs` | Every command the interface can call |
+| `core/shell-integration/` | zsh and bash scripts that report the folder and command boundaries |
+| `scripts/` | Build and signing helpers |
 
 ## Pull requests
 
