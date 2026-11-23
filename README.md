@@ -43,6 +43,7 @@ It stays small: a Rust core with the system webview, an installer under 20 MB, a
 - A desktop notification when a task finishes while tine is in the background.
 - **Changes panel:** every changed file with line counts, and its diff, unified or side by side, updating live.
 - **This Turn:** narrows the changes to what happened since your last Enter, so you review only the agent's latest step.
+- **Branch:** everything the branch changed since it left main, commits and uncommitted edits in one list.
 - **Follow mode:** opens each file's diff the moment the agent edits it.
 - **Point the agent at code:** select lines in a file or diff and press Cmd+L; tine types `src/app.ts:12-18 ` into the terminal so you can add what to do with them.
 
@@ -56,6 +57,7 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 - Create, rename and move to Trash from the tree's context menu.
 - **Search in files:** Cmd+Shift+F finds a text in every file git does not ignore and opens the match at its line.
 - **Open in Editor:** hands the file to VS Code, Cursor or Zed at the cursor's line, for edits bigger than tine is for.
+- **Web panel:** ◫ Web shows a page (a video, docs, a dev server) in the bottom half of the viewer, with bookmarks. Pages have no access to tine.
 
 ### Fits any screen
 - Resizable panels, each of which can be hidden.
@@ -122,6 +124,7 @@ font_size = 14
 theme = "system"        # "system", "light" or "dark"
 shell = "/bin/zsh"      # default: your login shell
 editor = "cursor"       # for Open in Editor: "vscode" (default), "cursor" or "zed"
+bookmarks = ["https://www.youtube.com/"]   # the web panel's ☆ adds to this
 
 [keybindings]
 newTab = "cmd+t"

@@ -155,6 +155,7 @@ export type Settings = {
   theme?: "system" | "light" | "dark";
   shell?: string;
   editor?: "vscode" | "cursor" | "zed";
+  bookmarks?: string[];
   keybindings: Record<string, string>;
 };
 
@@ -162,15 +163,18 @@ export type Settings = {
 export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
 
 /** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
-export const settingsSet = (key: string, value: string | number | null) => invoke<Settings>("settings_set", { key, value });
+export const settingsSet = (key: string, value: string | number | string[] | null) => invoke<Settings>("settings_set", { key, value });
 
 // --- App ---
 
 /** Opens a file at a line in the editor chosen in the settings (VS Code by default). */
 export const openInEditor = (path: string, line: number, col: number) => invoke<void>("open_in_editor", { path, line, col });
 
-/** Opens an http(s) page in its own tine window. */
-export const webOpen = (url: string) => invoke<void>("web_open", { url });
+type Rect = { x: number; y: number; width: number; height: number };
+/** Shows an http(s) page in the web panel's webview, laid over `rect` (CSS pixels). */
+export const webShow = (url: string, rect: Rect) => invoke<void>("web_show", { url, ...rect });
+export const webPlace = (rect: Rect & { hidden: boolean }) => invoke<void>("web_place", rect);
+export const webClose = () => invoke<void>("web_close");
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});
 
 export const onMenu = (handler: (id: string) => void) => tauri.event.listen<string>("menu", (e) => handler(e.payload));

@@ -262,29 +262,91 @@ async fn open_url(url: String) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Opens a web page (a video site, docs) in its own tine window. The page gets no IPC:
-/// capabilities only grant commands to the "main" window.
-#[tauri::command(rename_all = "snake_case")]
-async fn web_open(app: AppHandle, url: String) -> Result<(), AppError> {
+/// The web panel: a second webview inside the main window, laid over the slot the frontend
+/// keeps for it (positions in CSS pixels). Pages get no IPC: capabilities apply only to
+/// local content unless they list remote URLs, and ours list none.
+const WEB: &str = "web";
+
+fn web_url(url: &str) -> Result<tauri::Url, AppError> {
     let parsed: tauri::Url = url
         .parse()
         .map_err(|_| AppError::new("invalid", format!("{url} is not a web address")))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(AppError::new("invalid", format!("refusing to open {url}")));
     }
-    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let title = parsed.host_str().unwrap_or("web").to_string();
-    tauri::WebviewWindowBuilder::new(
-        &app,
-        format!("web-{n}"),
-        tauri::WebviewUrl::External(parsed),
-    )
-    .title(title)
-    .inner_size(960.0, 600.0)
-    .build()
-    .map_err(|e| AppError::new("web", e.to_string()))?;
+    Ok(parsed)
+}
+
+fn web_err(e: tauri::Error) -> AppError {
+    AppError::new("web", e.to_string())
+}
+
+fn web_rect(x: f64, y: f64, width: f64, height: f64) -> tauri::Rect {
+    tauri::Rect {
+        position: tauri::LogicalPosition::new(x, y).into(),
+        size: tauri::LogicalSize::new(width.max(1.0), height.max(1.0)).into(),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn web_show(
+    app: AppHandle,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), AppError> {
+    let url = web_url(&url)?;
+    if let Some(web) = app.get_webview(WEB) {
+        web.navigate(url).map_err(web_err)?;
+        web.set_bounds(web_rect(x, y, width, height))
+            .map_err(web_err)?;
+        return web.show().map_err(web_err);
+    }
+    let window = app
+        .get_window("main")
+        .ok_or_else(|| AppError::new("web", "no main window"))?;
+    let rect = web_rect(x, y, width, height);
+    window
+        .add_child(
+            tauri::webview::WebviewBuilder::new(WEB, tauri::WebviewUrl::External(url)),
+            rect.position,
+            rect.size,
+        )
+        .map_err(web_err)?;
     Ok(())
+}
+
+/// Moves the panel's webview over its slot again, or hides it (while a menu or dialog is
+/// open, since a native webview always draws above the page).
+#[tauri::command(rename_all = "snake_case")]
+async fn web_place(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    hidden: bool,
+) -> Result<(), AppError> {
+    let Some(web) = app.get_webview(WEB) else {
+        return Ok(());
+    };
+    if hidden {
+        return web.hide().map_err(web_err);
+    }
+    web.set_bounds(web_rect(x, y, width, height))
+        .map_err(web_err)?;
+    web.show().map_err(web_err)
+}
+
+/// Closes the page, which also stops whatever it was playing.
+#[tauri::command(rename_all = "snake_case")]
+async fn web_close(app: AppHandle) -> Result<(), AppError> {
+    match app.get_webview(WEB) {
+        Some(web) => web.close().map_err(web_err),
+        None => Ok(()),
+    }
 }
 
 /// `path` for the path part of a URL: everything but letters, digits, `-._~/` percent-encoded.
@@ -473,7 +535,9 @@ pub fn run() {
             git_snapshot,
             git_changes_since,
             git_branch_base,
-            web_open,
+            web_show,
+            web_place,
+            web_close,
             settings_load,
             open_url
         ]);

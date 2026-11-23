@@ -15,9 +15,9 @@ import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
 import { openSettings } from "./components/settings.ts";
-import { openWebPage } from "./components/web.ts";
 import { toast } from "./components/toast.ts";
 import * as viewer from "./viewer/index.ts";
+import * as web from "./web/index.ts";
 import * as quicklook from "./viewer/quicklook.ts";
 
 const MIN_PANEL = 160;
@@ -119,7 +119,11 @@ export function mountApp(root: HTMLElement): () => void {
     if (isCompact()) viewerVisible.set(false);
   });
   const term = terminal.mount(main);
-  const disposeViewer = viewer.mount(side);
+  // The viewer column: open docs on top, the web panel (when open) in the bottom half.
+  const docsArea = Object.assign(document.createElement("div"), { className: "viewer-docs" });
+  side.append(docsArea);
+  const disposeViewer = viewer.mount(docsArea);
+  const disposeWeb = web.mount(side);
   const disposeQuickLook = quicklook.mount(root);
 
   const newFile = () => {
@@ -163,7 +167,7 @@ export function mountApp(root: HTMLElement): () => void {
     },
     { label: "Clear Terminal", run: () => term.clear() },
     ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
-    { label: "Open Web Page…", run: () => void openWebPage() },
+    { label: "Toggle Web Panel", run: () => commands.toggleWeb() },
     { label: "Settings…", run: () => openSettings(openSettingsFile) },
     { label: "Open Settings File", run: openSettingsFile },
   ]);
@@ -309,6 +313,7 @@ export function mountApp(root: HTMLElement): () => void {
     void menuListener.then((u) => u());
     unsubs.forEach((u) => u());
     disposeQuickLook();
+    disposeWeb();
     disposeViewer();
     term.dispose();
     unsubSettings();

@@ -1,5 +1,4 @@
 import { commands } from "../state/commands.ts";
-import { openWebPage } from "../components/web.ts";
 import { activeTabId, splitPair, tabs } from "../state/tabs.ts";
 
 /** Renders the tab strip from state; clicks call back into the terminal panel. */
@@ -48,8 +47,8 @@ export function mountTabBar(
     add.onclick = () => actions.create();
     const gear = Object.assign(document.createElement("button"), { className: "settings-button", textContent: "⚙ Settings" });
     gear.onclick = () => commands.openSettings();
-    const web = Object.assign(document.createElement("button"), { className: "settings-button web-button", textContent: "◫ Web", title: "Open a web page in its own window" });
-    web.onclick = () => void openWebPage();
+    const web = Object.assign(document.createElement("button"), { className: "settings-button web-button", textContent: "◫ Web", title: "Show or close the web panel" });
+    web.onclick = () => commands.toggleWeb();
     bar.append(add, web, gear);
   };
 

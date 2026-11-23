@@ -15,6 +15,8 @@ pub struct Settings {
     pub shell: Option<String>,
     /// Editor for "Open in Editor": "vscode" (default), "cursor" or "zed".
     pub editor: Option<String>,
+    /// Web pages offered in the web panel's bookmark menu (http or https addresses).
+    pub bookmarks: Vec<String>,
     /// Action name -> key chord such as "cmd+t" or "ctrl+shift+t".
     pub keybindings: BTreeMap<String, String>,
 }
@@ -39,6 +41,9 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 
 # Editor for "Open in Editor": "vscode", "cursor" or "zed".
 # editor = "vscode"
+
+# Bookmarks for the web panel (◫ Web); the panel's ☆ button adds to this list.
+# bookmarks = ["https://www.youtube.com/"]
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
@@ -95,6 +100,16 @@ fn parse(text: &str) -> Result<Settings, AppError> {
             format!("editor must be vscode, cursor or zed, not \"{editor}\""),
         ));
     }
+    if let Some(bad) = settings
+        .bookmarks
+        .iter()
+        .find(|b| !(b.starts_with("https://") || b.starts_with("http://")))
+    {
+        return Err(AppError::new(
+            "invalid_settings",
+            format!("bookmarks must be http or https addresses, not \"{bad}\""),
+        ));
+    }
     if let Some(size) = settings.font_size
         && !(6.0..=72.0).contains(&size)
     {
@@ -107,7 +122,14 @@ fn parse(text: &str) -> Result<Settings, AppError> {
 }
 
 /// Top-level keys the settings window may change; keybindings stay a file-only setting.
-const EDITABLE: [&str; 5] = ["font_family", "font_size", "theme", "shell", "editor"];
+const EDITABLE: [&str; 6] = [
+    "font_family",
+    "font_size",
+    "theme",
+    "shell",
+    "editor",
+    "bookmarks",
+];
 
 /// Editors "Open in Editor" can hand a file to; each opens `<name>://file/<path>:<line>:<col>`.
 pub const EDITORS: [&str; 3] = ["vscode", "cursor", "zed"];
@@ -231,7 +253,10 @@ mod tests {
             Some(&toml::Value::String("/bin/bash".into())),
         )
         .unwrap();
+        let list = toml::Value::Array(vec![toml::Value::String("https://a.b/".into())]);
+        set(&path, "bookmarks", Some(&list)).unwrap();
         let s = load(&path).unwrap();
+        assert_eq!(s.bookmarks, ["https://a.b/"]);
         assert_eq!(s.shell.as_deref(), Some("/bin/bash"));
         assert_eq!(s.keybindings.len(), 1);
     }
@@ -255,6 +280,7 @@ mod tests {
             "font_size = 200",
             "fontsize = 12",
             "font_size = \"big\"",
+            "bookmarks = [\"file:///etc/passwd\"]",
         ] {
             std::fs::write(&path, bad).unwrap();
             let err = load(&path).unwrap_err();

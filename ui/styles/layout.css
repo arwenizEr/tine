@@ -60,6 +60,62 @@ button {
   border-left: 1px solid var(--border);
 }
 
+.viewer-docs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.web-pane {
+  flex: 0 0 50%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.web-bar {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 30px;
+  padding: 0 6px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.web-bookmarks {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  font: 12px var(--ui-font);
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.web-bar .bar-button {
+  flex: none;
+  min-width: 24px;
+}
+
+.web-slot {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+
+.web-hint {
+  padding: 16px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .resizer {
   flex: none;
   width: 4px;

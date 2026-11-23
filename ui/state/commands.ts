@@ -15,6 +15,8 @@ export const commands = {
   cdInTerminal: (_dir: string): string | null => "No terminal",
   /** Opens the settings window. */
   openSettings: (): void => {},
+  /** Shows or closes the web panel under the viewer. */
+  toggleWeb: (): void => {},
   /** Enter was pressed in a terminal: a new turn starts (for the git panel's "This turn"). */
   turnStarted: (): void => {},
 };
