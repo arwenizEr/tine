@@ -281,48 +281,11 @@ fn web_err(e: tauri::Error) -> AppError {
     AppError::new("web", e.to_string())
 }
 
-/// `x, y` are CSS pixels in the main webview; the child is placed in window coordinates, so
-/// the main webview's own offset in the window is added.
-fn web_rect(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) -> tauri::Rect {
-    let main = app.get_webview("main");
-    let offset = main
-        .as_ref()
-        .and_then(|m| {
-            let scale = m.window().scale_factor().ok()?;
-            Some(m.position().ok()?.to_logical::<f64>(scale))
-        })
-        .unwrap_or(tauri::LogicalPosition::new(0.0, 0.0));
-    let rect = tauri::Rect {
-        position: tauri::LogicalPosition::new(x + offset.x, y + offset.y).into(),
+/// `x, y, width, height` in CSS pixels, which match the window's logical pixels.
+fn web_rect(x: f64, y: f64, width: f64, height: f64) -> tauri::Rect {
+    tauri::Rect {
+        position: tauri::LogicalPosition::new(x, y).into(),
         size: tauri::LogicalSize::new(width.max(1.0), height.max(1.0)).into(),
-    };
-    web_log(app, main.as_ref(), &rect);
-    rect
-}
-
-/// Layout numbers for the web panel, appended to the app's log folder: placement bugs only
-/// show on a real window.
-fn web_log(app: &AppHandle, main: Option<&tauri::Webview>, rect: &tauri::Rect) {
-    let (Ok(dir), Some(main)) = (app.path().app_log_dir(), main) else {
-        return;
-    };
-    let w = main.window();
-    let line = format!(
-        "rect={rect:?} main_pos={:?} main_size={:?} inner={:?} outer={:?} scale={:?}\n",
-        main.position().ok(),
-        main.size().ok(),
-        w.inner_size().ok(),
-        w.outer_size().ok(),
-        w.scale_factor().ok()
-    );
-    let _ = std::fs::create_dir_all(&dir);
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join("web.log"))
-    {
-        use std::io::Write;
-        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -338,14 +301,14 @@ async fn web_show(
     let url = web_url(&url)?;
     if let Some(web) = app.get_webview(WEB) {
         web.navigate(url).map_err(web_err)?;
-        web.set_bounds(web_rect(&app, x, y, width, height))
+        web.set_bounds(web_rect(x, y, width, height))
             .map_err(web_err)?;
         return web.show().map_err(web_err);
     }
     let window = app
         .get_window("main")
         .ok_or_else(|| AppError::new("web", "no main window"))?;
-    let rect = web_rect(&app, x, y, width, height);
+    let rect = web_rect(x, y, width, height);
     window
         .add_child(
             tauri::webview::WebviewBuilder::new(WEB, tauri::WebviewUrl::External(url)),
@@ -373,7 +336,7 @@ async fn web_place(
     if hidden {
         return web.hide().map_err(web_err);
     }
-    web.set_bounds(web_rect(&app, x, y, width, height))
+    web.set_bounds(web_rect(x, y, width, height))
         .map_err(web_err)?;
     web.show().map_err(web_err)
 }
