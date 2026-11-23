@@ -37,13 +37,26 @@ const ROW = 22;
 const OVERSCAN = 10;
 const isMac = navigator.userAgent.includes("Mac");
 
-/** The git root containing `dir`, or `dir` itself outside a repo. */
+const exists = (path: string) => fsStat(path).then(() => true, () => false);
+
+/**
+ * The git root containing `dir`, or `dir` itself outside a repo. A shell can sit in a folder
+ * that was renamed or deleted under it (its cwd then names a path that is gone): the nearest
+ * folder that still exists stands in for it.
+ */
 async function findRoot(dir: string): Promise<{ root: string; isRepo: boolean }> {
+  let base = "/";
   for (const d of ancestors(dir)) {
-    // `.git` is a folder in a normal repo and a file in a worktree; both count.
-    if (await fsStat(join(d, ".git")).then(() => true, () => false)) return { root: d, isRepo: true };
+    if (await exists(d)) {
+      base = d;
+      break;
+    }
   }
-  return { root: dir, isRepo: false };
+  for (const d of ancestors(base)) {
+    // `.git` is a folder in a normal repo and a file in a worktree; both count.
+    if (await exists(join(d, ".git"))) return { root: d, isRepo: true };
+  }
+  return { root: base, isRepo: false };
 }
 
 // Set by mount: re-lists a folder now instead of waiting for the watcher.
