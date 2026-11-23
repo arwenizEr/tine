@@ -21,7 +21,7 @@ export function startFollow(): () => void {
     const changed = st.files.filter((f) => before.get(key(f)) !== signature(f)).sort((a, b) => Number(b.staged) - Number(a.staged));
     const latest = changed.at(-1);
     if (!latest || latest.status === "deleted") return;
-    openDoc(latest.path, "diff", { preview: true, staged: latest.staged });
+    openDoc(latest.path, "diff", { preview: true, staged: latest.staged, background: true });
     // On a narrow window the drawer would cover the agent's output; only update it there.
     if (!isCompact()) viewerVisible.set(true);
   });

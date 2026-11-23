@@ -3,7 +3,7 @@ import { toast } from "../components/toast.ts";
 import { toWebUrl } from "../components/weburl.ts";
 import { errorMessage, openUrl, settingsSet, webClose, webPlace, webShow } from "../ipc.ts";
 import { commands } from "../state/commands.ts";
-import { viewerVisible } from "../state/layout.ts";
+import { viewerMode, viewerVisible } from "../state/layout.ts";
 import { settings } from "../state/settings.ts";
 
 const OPEN = "__open";
@@ -16,8 +16,9 @@ const label = (url: string) => {
 };
 
 /**
- * The web panel: the bottom half of the viewer column shows a web page (a video, docs) in a
- * native webview that Rust lays over `slot`. Bookmarks live in the settings file.
+ * The web panel: the viewer column shows either the open files or a web page (a video, docs)
+ * in a native webview that Rust lays over `slot`. Switching to files hides the page but keeps
+ * it loaded; × closes it. Bookmarks live in the settings file.
  */
 export function mount(parent: HTMLElement): () => void {
   const pane = Object.assign(document.createElement("section"), { className: "web-pane", hidden: true });
@@ -33,8 +34,9 @@ export function mount(parent: HTMLElement): () => void {
   };
   const star = button("☆", "Bookmark this page", () => void toggleBookmark());
   const browser = button("↗", "Open in your browser", () => url && void openUrl(url));
-  const close = button("×", "Close the web panel", () => setOpen(false));
-  bar.append(picker, star, browser, close);
+  const files = button("‹ Files", "Back to the open files; the page keeps playing", () => viewerMode.set("docs"));
+  const close = button("×", "Close the page", () => closePage());
+  bar.append(files, picker, star, browser, close);
   const slot = Object.assign(document.createElement("div"), { className: "web-slot" });
   const hint = Object.assign(document.createElement("div"), { className: "web-hint", textContent: "Choose a bookmark, or Open address… in the menu above." });
   slot.append(hint);
@@ -90,17 +92,21 @@ export function mount(parent: HTMLElement): () => void {
     }
   };
 
-  const setOpen = (open: boolean) => {
-    pane.hidden = !open;
-    if (open) {
-      viewerVisible.set(true);
-      if (url) void go(url);
-    } else if (shown) {
-      shown = false;
-      void webClose().catch(() => {});
-    }
+  const closePage = () => {
+    if (shown) void webClose().catch(() => {});
+    shown = false;
+    viewerMode.set("docs");
   };
-  commands.toggleWeb = () => setOpen(pane.hidden);
+  const showMode = (mode: "docs" | "web") => {
+    pane.hidden = mode !== "web";
+    if (mode === "web" && url && !shown) void go(url);
+    place();
+  };
+  commands.toggleWeb = () => {
+    if (viewerMode.get() === "web" && viewerVisible.get()) return viewerMode.set("docs");
+    viewerMode.set("web");
+    viewerVisible.set(true);
+  };
 
   const saveBookmarks = async (marks: string[]) => {
     try {
@@ -136,7 +142,7 @@ export function mount(parent: HTMLElement): () => void {
   toggled.observe(document.body, { subtree: true, attributeFilter: ["hidden"] });
   addEventListener("resize", place);
   document.addEventListener("animationend", place, true);
-  const unsubs = [settings.subscribe(render), viewerVisible.subscribe(place)];
+  const unsubs = [settings.subscribe(render), viewerVisible.subscribe(place), viewerMode.subscribe(showMode)];
 
   return () => {
     unsubs.forEach((u) => u());

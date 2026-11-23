@@ -8,7 +8,7 @@ import { mountPalette } from "./palette/index.ts";
 import { dirname, hasControlChars } from "./paths.ts";
 import { commands } from "./state/commands.ts";
 import { activeDocId, docs, openDoc, selected, treeRoot } from "./state/files.ts";
-import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/layout.ts";
+import { followMode, isCompact, sidebarVisible, viewerMode, viewerVisible } from "./state/layout.ts";
 import { gitState, repo, sidebarView } from "./state/git.ts";
 import { settings, settingsPath } from "./state/settings.ts";
 import { activeCwd } from "./state/tabs.ts";
@@ -119,7 +119,7 @@ export function mountApp(root: HTMLElement): () => void {
     if (isCompact()) viewerVisible.set(false);
   });
   const term = terminal.mount(main);
-  // The viewer column: open docs on top, the web panel (when open) in the bottom half.
+  // The viewer column shows either the open docs or the web panel.
   const docsArea = Object.assign(document.createElement("div"), { className: "viewer-docs" });
   side.append(docsArea);
   const disposeViewer = viewer.mount(docsArea);
@@ -302,6 +302,9 @@ export function mountApp(root: HTMLElement): () => void {
     }),
     watch(sidebarVisible, (v) => {
       sidebar.hidden = leftHandle.hidden = !v;
+    }),
+    watch(viewerMode, (m) => {
+      docsArea.hidden = m !== "docs";
     }),
     watch(viewerVisible, (v) => {
       side.hidden = rightHandle.hidden = !v;

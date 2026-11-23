@@ -57,7 +57,7 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 - Create, rename and move to Trash from the tree's context menu.
 - **Search in files:** Cmd+Shift+F finds a text in every file git does not ignore and opens the match at its line.
 - **Open in Editor:** hands the file to VS Code, Cursor or Zed at the cursor's line, for edits bigger than tine is for.
-- **Web panel:** ◫ Web shows a page (a video, docs, a dev server) in the bottom half of the viewer, with bookmarks. Pages have no access to tine.
+- **Web panel:** ◫ Web swaps the viewer for a web page (a video, docs, a dev server), with bookmarks; ‹ Files swaps back while it keeps playing. Pages have no access to tine.
 
 ### Fits any screen
 - Resizable panels, each of which can be hidden.

@@ -1,7 +1,7 @@
 import type { Kind } from "../ipc.ts";
 import { isInside } from "../paths.ts";
 import { signal } from "../signal.ts";
-import { viewerVisible } from "./layout.ts";
+import { viewerVisible, viewerMode } from "./layout.ts";
 
 /** Root of the file tree: the active tab's folder, or its git root inside a repo. */
 export const treeRoot = signal<string | null>(null);
@@ -49,6 +49,8 @@ export type OpenOptions = {
   staged?: boolean;
   base?: string;
   baseLabel?: string;
+  /** Opened by the app, not the user (Follow mode): leaves the web panel in front. */
+  background?: boolean;
 };
 
 export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): void {
@@ -68,6 +70,7 @@ export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): vo
     docs.set(slot >= 0 ? list.with(slot, doc) : [...list, doc]);
   }
   activeDocId.set(doc.id);
+  if (!opts.background) viewerMode.set("docs");
   if (!opts.preview) viewerVisible.set(true);
   if (opts.line) jump.set({ docId: doc.id, line: opts.line, col: opts.col ?? 1 });
   if (opts.focus) focusDoc.set(doc.id);
