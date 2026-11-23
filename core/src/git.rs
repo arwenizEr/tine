@@ -528,7 +528,10 @@ pub mod tests {
         got.sort();
         assert_eq!(
             got,
-            [("a.txt".to_string(), "modified"), ("b.txt".to_string(), "added")]
+            [
+                ("a.txt".to_string(), "modified"),
+                ("b.txt".to_string(), "added")
+            ]
         );
     }
 

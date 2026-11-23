@@ -262,6 +262,31 @@ async fn open_url(url: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Opens a web page (a video site, docs) in its own tine window. The page gets no IPC:
+/// capabilities only grant commands to the "main" window.
+#[tauri::command(rename_all = "snake_case")]
+async fn web_open(app: AppHandle, url: String) -> Result<(), AppError> {
+    let parsed: tauri::Url = url
+        .parse()
+        .map_err(|_| AppError::new("invalid", format!("{url} is not a web address")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(AppError::new("invalid", format!("refusing to open {url}")));
+    }
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let title = parsed.host_str().unwrap_or("web").to_string();
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        format!("web-{n}"),
+        tauri::WebviewUrl::External(parsed),
+    )
+    .title(title)
+    .inner_size(960.0, 600.0)
+    .build()
+    .map_err(|e| AppError::new("web", e.to_string()))?;
+    Ok(())
+}
+
 /// `path` for the path part of a URL: everything but letters, digits, `-._~/` percent-encoded.
 fn url_path(path: &str) -> String {
     path.bytes()
@@ -448,6 +473,7 @@ pub fn run() {
             git_snapshot,
             git_changes_since,
             git_branch_base,
+            web_open,
             settings_load,
             open_url
         ]);

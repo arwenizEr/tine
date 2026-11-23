@@ -205,6 +205,11 @@ button {
   cursor: pointer;
 }
 
+/* Only the first button on the right takes the free space. */
+.web-button + .settings-button {
+  margin-left: 0;
+}
+
 .settings-button:hover {
   color: var(--fg);
   background: var(--hover-strong);

@@ -1,5 +1,9 @@
 /** Asks for a file or folder name. Resolves to null on cancel. */
-export function promptName(title: string, initial = ""): Promise<string | null> {
+const nameProblem = (name: string) =>
+  !name || name === "." || name === ".." || name.includes("/") ? "Enter a name without “/”." : null;
+
+/** Asks for one line of text; `problem` returns why a value is refused, or null to accept it. */
+export function promptName(title: string, initial = "", problem: (value: string) => string | null = nameProblem): Promise<string | null> {
   return new Promise((done) => {
     const restore = document.activeElement as HTMLElement | null;
     const backdrop = document.createElement("div");
@@ -28,8 +32,9 @@ export function promptName(title: string, initial = ""): Promise<string | null> 
     form.onsubmit = (e) => {
       e.preventDefault();
       const name = input.value.trim();
-      if (!name || name === "." || name === ".." || name.includes("/")) {
-        error.textContent = "Enter a name without “/”.";
+      const why = problem(name);
+      if (why) {
+        error.textContent = why;
         return;
       }
       finish(name);

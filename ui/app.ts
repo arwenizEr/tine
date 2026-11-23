@@ -15,6 +15,7 @@ import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
 import { openSettings } from "./components/settings.ts";
+import { openWebPage } from "./components/web.ts";
 import { toast } from "./components/toast.ts";
 import * as viewer from "./viewer/index.ts";
 import * as quicklook from "./viewer/quicklook.ts";
@@ -162,6 +163,7 @@ export function mountApp(root: HTMLElement): () => void {
     },
     { label: "Clear Terminal", run: () => term.clear() },
     ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
+    { label: "Open Web Page…", run: () => void openWebPage() },
     { label: "Settings…", run: () => openSettings(openSettingsFile) },
     { label: "Open Settings File", run: openSettingsFile },
   ]);

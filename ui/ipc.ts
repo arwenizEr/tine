@@ -169,6 +169,8 @@ export const settingsSet = (key: string, value: string | number | null) => invok
 /** Opens a file at a line in the editor chosen in the settings (VS Code by default). */
 export const openInEditor = (path: string, line: number, col: number) => invoke<void>("open_in_editor", { path, line, col });
 
+/** Opens an http(s) page in its own tine window. */
+export const webOpen = (url: string) => invoke<void>("web_open", { url });
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});
 
 export const onMenu = (handler: (id: string) => void) => tauri.event.listen<string>("menu", (e) => handler(e.payload));
