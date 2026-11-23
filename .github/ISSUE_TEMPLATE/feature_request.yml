@@ -1,0 +1,23 @@
+name: Feature request
+description: An idea for tine
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do while working with an agent, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How tine could help. Rough is fine.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This is not built-in AI, an account, telemetry, git writes or a plugin system (out of scope by design).
+          required: true

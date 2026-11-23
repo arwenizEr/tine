@@ -1,204 +1,207 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="128" height="128" alt="tine logo">
+<img src="docs/logo.svg" width="112" height="112" alt="tine logo">
 
 # tine
 
-**A lightweight terminal for working with AI coding agents on one screen.**
+**The terminal for working with AI coding agents.**
 
-Run Claude Code, Codex or any CLI, and review what it changes as it works: no IDE, no extra windows.
+Run Claude Code, Codex or any CLI agent, and review every change it makes, live, on the same screen.<br>
+No IDE, no extra windows, no account.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey.svg)
 ![Built with Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-24c8db.svg)
 
-[Install](#install) · [Features](#features) · [Shortcuts](#keyboard-shortcuts) · [Settings](#settings) · [Build from source](#build-from-source)
+[Features](#features) · [Install](#install) · [Shortcuts](#keyboard-shortcuts) · [Settings](#settings) · [Privacy](#privacy-and-security) · [Development](#development)
+
+<br>
+
+<img src="docs/screenshot.png" alt="tine: an agent's changes listed on the left, the agent running in the middle, and the diff of an edited file on the right" width="100%">
 
 </div>
 
-<!-- Screenshots: add images to docs/ and link them here before the first public release. -->
-
 ## Why tine
 
-Coding agents edit files while you watch a terminal. To see what they did, you usually switch to an editor or run `git diff` by hand. tine puts the three things you need side by side, sized for a single laptop screen:
+A coding agent edits files while you watch a terminal. To see what it actually did, you switch to an editor or run `git diff` by hand, and lose track of the agent while you do.
 
-| Terminal | File tree | Viewer and changes |
-| --- | --- | --- |
-| A fast, full terminal where the agent runs | Follows your shell's folder and marks changed files | Live diffs of what the agent touched, and light editing |
+tine keeps the three things you need side by side, sized for one laptop screen:
 
-It stays small: a Rust core with the system webview, an installer under 20 MB, and no built-in AI, account, telemetry or network calls of its own.
+- **The terminal** where the agent runs: a fast, complete terminal, not a chat box.
+- **The changes**: every file the agent touched, with line counts, updating as it works.
+- **The diff** of the file you pick, unified or side by side, with + and − on each line.
+
+It stays out of the way: a small Rust core on the system webview, an app under 20 MB, and no built-in AI, telemetry or network calls of its own.
 
 ## Features
 
-### A real terminal
-- Tabs, true colour, Unicode, GPU rendering with a fallback.
-- **Split:** Cmd+D shows a second tab beside the current one, for two agents or an agent and a dev server.
-- Full-screen programs (vim, htop, less), Option as Meta, bracketed paste.
-- **Shift+Enter** inserts a newline in agent prompts (Claude Code, Codex).
-- Clickable links, and clickable file paths that open at the right line.
-- **Command blocks:** each command gets a separator with its exit code and duration; jump between them with Cmd+Up / Cmd+Down.
+### Review what the agent did
 
-### Made for watching agents
-- Tabs show a spinner while a program works, a dot when it finishes, and a pulsing amber dot when an agent is waiting for your permission.
+| | |
+| --- | --- |
+| **Changes panel** | Every changed file with +/− counts and its diff, live. Read-only by design: committing stays with you. |
+| **This Turn** | Only what changed since your last Enter, so you review one agent step at a time. |
+| **Branch** | Everything the branch changed since it left `main`: commits and uncommitted edits in one list. |
+| **Follow mode** | Opens each file's diff the moment the agent writes it, without taking focus from the terminal. |
+| **Cmd+L** | Select lines in a file or diff and tine types `src/app.ts:12-18 ` into the agent's prompt. |
+
+### Keep an eye on several agents
+
+- Tabs show a spinner while a program works, a dot when it finishes, and a pulsing amber dot when an agent waits for your permission.
 - A desktop notification when a task finishes while tine is in the background.
-- **Changes panel:** every changed file with line counts, and its diff, unified or side by side, updating live.
-- **This Turn:** narrows the changes to what happened since your last Enter, so you review only the agent's latest step.
-- **Branch:** everything the branch changed since it left main, commits and uncommitted edits in one list.
-- **Follow mode:** opens each file's diff the moment the agent edits it.
-- **Point the agent at code:** select lines in a file or diff and press Cmd+L; tine types `src/app.ts:12-18 ` into the terminal so you can add what to do with them.
+- **Split** (Cmd+D) puts two tabs side by side: two agents, or an agent and a dev server.
 
-For the dot and desktop notifications, the agent has to report to the terminal. In Claude Code, open `/config` and set notifications to an iTerm2 option (it sends OSC 9, which tine reads) or to the terminal bell.
+The waiting dot and notifications need the agent to report to the terminal. In Claude Code, open `/config` and set notifications to an iTerm2 option (it sends OSC 9, which tine reads) or to the terminal bell.
 
-### Files without an IDE
-- The file tree roots itself at the active tab's folder (the git root inside a repo) and updates as files change.
-- Select to preview code, images, Markdown or folders; Space for Quick Look.
-- Double-click a file to edit it, Cmd+S to save. tine never overwrites a change an agent made meanwhile: you choose to reload or keep your edits.
-- Double-click a folder to `cd` the terminal there; drag a file into the terminal to paste its path.
-- Create, rename and move to Trash from the tree's context menu.
-- **Search in files:** Cmd+Shift+F finds a text in every file git does not ignore and opens the match at its line.
-- **Open in Editor:** hands the file to VS Code, Cursor or Zed at the cursor's line, for edits bigger than tine is for.
-- **Web panel:** ◫ Web swaps the viewer for a web page (a video, docs, a dev server), with bookmarks; ‹ Files swaps back while it keeps playing. Pages have no access to tine.
+### A real terminal
 
-### Fits any screen
-- Resizable panels, each of which can be hidden.
-- Below 1100 px wide, the viewer becomes a drawer over the terminal.
-- Light and dark themes that follow the system, or a fixed one.
+- Tabs, true colour, Unicode and GPU rendering, with a fallback.
+- Full-screen programs (vim, htop, less), Option as Meta, bracketed paste, and **Shift+Enter** for newlines in agent prompts.
+- **Command blocks:** each command gets a separator with its exit code and duration; Cmd+Up / Cmd+Down jump between them.
+- Clickable links, and file paths that open in the viewer at the right line.
+
+### Files, without an IDE
+
+- A file tree that follows the active tab's folder (the git root inside a repo) and marks changed files.
+- Preview code, images, Markdown and folders; Space for Quick Look.
+- Light editing with Cmd+S. tine never overwrites a change an agent made in the meantime: you choose to reload or keep yours.
+- **Search in files** (Cmd+Shift+F) across everything git does not ignore.
+- **Open in Editor** hands the file to VS Code, Cursor or Zed at the cursor's line.
+- Double-click a folder to `cd` there; drag a file into the terminal to paste its path; create, rename and trash from the tree.
+
+### A web panel for the wait
+
+**◫ Web** swaps the viewer for a web page: docs, your dev server, or a video while the agent works. Keep bookmarks with ☆, and switch back with **‹ Files** while the page keeps playing. Pages run in their own webview with no access to tine.
+
+### Fits your screen
+
+Every panel can be resized or hidden. Below 1100 px wide the viewer becomes a drawer over the terminal. Light and dark themes follow the system, or pick one.
 
 ## Install
 
-Download the latest build from [Releases](../../releases).
+Pre-built downloads will be published on the [Releases](../../releases) page. Until the first release, [build from source](#development); it takes two commands.
 
-**macOS** (Apple Silicon and Intel): `tine_<version>_universal.dmg`. Drag tine to Applications. The build is not notarized, so the first launch needs one confirmation: open tine, then choose **Open Anyway** in System Settings → Privacy & Security. Or run:
+**macOS** (Apple Silicon and Intel): open the `.dmg` and drag tine to Applications. The build is not notarized, so the first launch needs one confirmation in System Settings → Privacy & Security → **Open Anyway**, or:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/tine.app
 ```
 
-On first start, tine offers to open **Full Disk Access** in System Settings. Turn tine on there once, and macOS stops asking separately for Desktop, Documents, Downloads and other folders, for tine and every command you run in it. You can also find it later in the command palette: `> Allow Full Disk Access`.
+On first start tine offers to open **Full Disk Access**. Turn it on once and macOS stops asking separately for Desktop, Documents and Downloads, for tine and every command you run in it.
 
 **Linux** (x86-64):
 
 ```sh
-# AppImage
-chmod +x tine_<version>_amd64.AppImage && ./tine_<version>_amd64.AppImage
-
-# Debian / Ubuntu
-sudo apt install ./tine_<version>_amd64.deb
+chmod +x tine_<version>_amd64.AppImage && ./tine_<version>_amd64.AppImage   # AppImage
+sudo apt install ./tine_<version>_amd64.deb                                  # Debian / Ubuntu
 ```
 
 ## Keyboard shortcuts
 
-On Linux, use Ctrl+Shift wherever macOS uses Cmd; Ctrl alone always goes to the shell.
+On Linux, use Ctrl+Shift where macOS uses Cmd (search in files is Ctrl+Alt+F). Ctrl alone always goes to the shell.
 
 | Shortcut | Action |
 | --- | --- |
 | Cmd+T / Cmd+W | New tab / close tab (or the open file, when the viewer has focus) |
 | Cmd+1 … Cmd+9 | Go to tab |
-| Cmd+D | Split: open a tab beside this one, or back to one tab |
+| Cmd+D | Split: a second tab beside this one, or back to one |
 | Cmd+P | Command palette: find a file, or type `>` for commands |
 | Cmd+Shift+F | Search in files |
+| Cmd+F | Find in the terminal (in the editor: in the file) |
 | Cmd+K | Clear the terminal |
-| Cmd+F | Find in the terminal (in the editor: find in the file) |
 | Cmd+Up / Cmd+Down | Previous / next command block |
 | Cmd+B / Cmd+J | Toggle the file tree / the viewer |
-| Cmd+N / Cmd+O | New file in the current folder / open a folder in a new tab |
+| Cmd+N / Cmd+O | New file here / open a folder in a new tab |
 | Cmd+S | Save the open file |
+| Cmd+L | Send the selected lines' location to the terminal |
 | Cmd+, | Settings |
 | Shift+Enter | Newline in agent prompts |
-| Cmd+L | Send the selected lines' location to the terminal (in the viewer) |
 | Cmd+click | Open a file path printed in the terminal |
 | Space | Quick Look the selected file |
 | Cmd+Backspace | Move the selected file to the Trash |
 
-Shortcuts can be changed in `settings.toml` (see [Settings](#settings)).
-
 ## Settings
 
-Click **⚙ Settings** at the right end of the terminal tabs (or press Cmd+,) to pick the font, font size, theme, shell and editor. Changes apply at once.
+Click **⚙ Settings** at the right of the terminal tabs (or press Cmd+,) to pick the font, size, theme, shell and editor from lists. Changes apply at once.
 
-Everything is stored in `~/.config/tine/settings.toml`, which is created on first start with every option commented out. Shortcuts are changed only there. Open it from the settings window, or with Cmd+P → `> Open Settings File`; saved edits apply at once.
+Everything lives in `~/.config/tine/settings.toml`, created on first start with every option commented out. Shortcuts are changed only there (Cmd+P → `> Open Settings File`); saved edits apply at once.
 
 ```toml
 font_family = "JetBrains Mono, Menlo, monospace"
 font_size = 14
-theme = "system"        # "system", "light" or "dark"
-shell = "/bin/zsh"      # default: your login shell
-editor = "cursor"       # for Open in Editor: "vscode" (default), "cursor" or "zed"
+theme = "system"                           # "system", "light" or "dark"
+shell = "/bin/zsh"                         # default: your login shell
+editor = "cursor"                          # "vscode" (default), "cursor" or "zed"
 bookmarks = ["https://www.youtube.com/"]   # the web panel's ☆ adds to this
 
 [keybindings]
 newTab = "cmd+t"
 palette = "cmd+shift+p"
-clear = "none"          # "none" removes a shortcut
+clear = "none"                             # "none" removes a shortcut
 ```
 
-## Shell integration
+## Privacy and security
 
-For zsh and bash, tine loads a small script at start (through `ZDOTDIR` or `--rcfile`). It runs your own config first and never edits your dotfiles. It reports the working directory (OSC 7) and command boundaries (OSC 133), which drive the file tree, command blocks and `cd` from the tree. Other shells work as a plain terminal without these extras.
+- **No network calls of its own.** No telemetry, no update checks, no account. The only traffic is what your commands make and the pages you open in the web panel.
+- **Web pages are isolated.** The web panel is a separate webview; tine's commands accept calls only from its own interface, never from a remote page.
+- **Terminal output cannot drive the app.** Shell integration marks are signed with a per-tab secret, so a program printing escape codes cannot fake a prompt or a finished command. Links open only for `http`, `https` and `mailto`.
+- **Your dotfiles stay untouched.** For zsh and bash, tine loads a small script through `ZDOTDIR` or `--rcfile` that runs your own config first. It reports the folder (OSC 7) and command boundaries (OSC 133), which drive the file tree and command blocks. Other shells work as a plain terminal.
 
-## Build from source
+Found a vulnerability? Please report it privately, as described in [SECURITY.md](SECURITY.md).
 
-Requirements:
+## Development
 
-- Rust (stable) and Node.js 22 or later
-- macOS: Xcode Command Line Tools
-- Linux: the WebKitGTK packages from [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/)
+You need Rust (stable) and Node.js 22 or later, plus Xcode Command Line Tools on macOS or the WebKitGTK packages from [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/) on Linux.
 
 ```sh
 npm install
-npm run tauri dev    # development build, reloads on frontend changes
-npm run app          # release bundle in core/target/release/bundle/
-npm run install-app  # macOS: the same, then copied to /Applications
+npm run tauri dev     # development build, reloads on frontend changes
+npm run app           # release bundle in core/target/release/bundle/
+npm run install-app   # macOS: the same, then copied to /Applications
 ```
 
-### Tests
+Before a pull request:
 
 ```sh
-npm run typecheck && npm test                                # frontend
-cd core && cargo clippy --all-targets && cargo test          # Rust core, against real shells and temporary git repos
+npm run typecheck && npm test                                 # frontend
+cd core && cargo clippy --all-targets -- -D warnings && cargo test   # core, against real shells and git repos
 ```
 
-### Architecture
+### How it is built
 
 | Layer | Technology |
 | --- | --- |
-| App shell | Tauri 2 with the system webview |
-| Core | Rust: `portable-pty` for terminals, `git2` for status and diffs, `notify` for file watching |
+| App shell | Tauri 2 on the system webview (WebKit on macOS, WebKitGTK on Linux) |
+| Core | Rust: `portable-pty` for terminals, `git2` for status and diffs, `notify` for watching files |
 | Terminal | xterm.js with the WebGL renderer |
 | Editor and diffs | CodeMirror 6 with `@codemirror/merge` |
-| UI | Plain TypeScript and CSS, bundled with esbuild, no framework |
+| Interface | Plain TypeScript and CSS, bundled with esbuild; no framework |
 
-The git panel is read-only by design: tine shows what changed and leaves committing to you and your tools.
-
-### Project layout
-
-Two folders, named for what they hold. They talk only through the commands in `ui/ipc.ts` ↔ `core/src/lib.rs`.
+The interface and the core talk only through the commands in `ui/ipc.ts` ↔ `core/src/lib.rs`.
 
 ```text
-ui/                     interface, TypeScript (runs in the system webview)
-├── main.ts  app.ts     entry; layout, shortcuts, command palette, settings
+ui/                     interface (TypeScript, runs in the webview)
+├── main.ts  app.ts     entry; layout, shortcuts, command palette
 ├── ipc.ts              the only file that calls the core
-├── keys.ts  paths.ts   shortcuts and path helpers, unit tested (*.test.ts)
-├── terminal/           tabs, split, command blocks, search
+├── terminal/           tabs, split, command blocks, find
 ├── filetree/           file tree that follows the shell
-├── git/                Changes panel, This Turn, Follow
+├── git/                Changes panel, This Turn, Branch, Follow
 ├── viewer/             file, image, Markdown and diff views, Quick Look
-├── palette/            command palette
+├── web/                web panel and bookmarks
+├── palette/            command palette and search in files
 ├── components/         menus, dialogs, toasts, settings window
 ├── state/              shared state (signals)
 └── styles/             theme colours and layout
-core/                   engine, Rust (a Tauri app; found by its tauri.conf.json)
+core/                   engine (Rust, a Tauri app)
 ├── src/                PTYs, files, git, watching, settings
-├── shell-integration/  zsh and bash scripts that report folder and commands
-├── tauri.conf.json     window, security policy, bundling
-└── icons/              app icons, generated from docs/logo.svg
+├── shell-integration/  zsh and bash scripts
+└── tauri.conf.json     window, security policy, bundling
 scripts/                build and signing helpers
-docs/                   logo
 ```
 
 ## Contributing
 
-Issues and pull requests are welcome. Run the tests above before opening a pull request and keep each change focused. For a larger feature, open an issue first so we can agree on the approach: tine aims to stay small.
+Bug reports, ideas and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). tine aims to stay small, so for a larger feature please open an issue first.
 
 ## License
 
