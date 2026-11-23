@@ -145,6 +145,7 @@ Requirements:
 npm install
 npm run tauri dev    # development build, reloads on frontend changes
 npm run app          # release bundle in core/target/release/bundle/
+npm run install-app  # macOS: the same, then copied to /Applications
 ```
 
 ### Tests
