@@ -294,7 +294,7 @@ export function mount(parent: HTMLElement): () => void {
         const tab = el("div", "doc-tab" + (doc.id === active ? " active" : "") + (doc.preview ? " preview" : ""));
         tab.title = doc.path;
         const name = el("span", "doc-tab-name");
-        const diffLabel = doc.base ? " (this turn)" : doc.staged ? " (staged)" : " (diff)";
+        const diffLabel = doc.base ? ` (${doc.baseLabel ?? "this turn"})` : doc.staged ? " (staged)" : " (diff)";
         name.textContent = (basename(doc.path) || doc.path) + (doc.kind === "diff" ? diffLabel : "");
         tab.append(name);
         if (doc.dirty) {

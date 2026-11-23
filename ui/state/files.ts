@@ -23,8 +23,10 @@ export type Doc = {
   path: string;
   kind: DocKind;
   staged: boolean;
-  /** For diffs: a snapshot id ("This turn"); the diff then runs from it to the file on disk. */
+  /** For diffs: a tree id (a "This Turn" snapshot or a branch's fork point); the diff then runs from it to the file on disk. */
   base?: string;
+  /** What `base` is, for the tab title: "this turn" or "since origin/main". */
+  baseLabel?: string;
   preview: boolean;
   dirty: boolean;
 };
@@ -46,6 +48,7 @@ export type OpenOptions = {
   focus?: boolean;
   staged?: boolean;
   base?: string;
+  baseLabel?: string;
 };
 
 export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): void {
@@ -60,7 +63,7 @@ export function openDoc(path: string, kind: DocKind, opts: OpenOptions = {}): vo
       docs.set(list.map((d) => (d.id === promoted.id ? promoted : d)));
     }
   } else {
-    doc = { id: ++nextDocId, path, kind, staged, base, preview: !!opts.preview, dirty: false };
+    doc = { id: ++nextDocId, path, kind, staged, base, baseLabel: base && opts.baseLabel, preview: !!opts.preview, dirty: false };
     const slot = opts.preview ? list.findIndex((d) => d.preview) : -1;
     docs.set(slot >= 0 ? list.with(slot, doc) : [...list, doc]);
   }

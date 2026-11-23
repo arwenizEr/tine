@@ -1,8 +1,8 @@
-import { gitChangesSince, gitSnapshot, gitStatus, onGitChanged, type GitFile } from "../ipc.ts";
+import { gitBranchBase, gitChangesSince, gitSnapshot, gitStatus, onGitChanged, type GitFile } from "../ipc.ts";
 import { basename, dirname } from "../paths.ts";
 import { openDoc } from "../state/files.ts";
 import { commands } from "../state/commands.ts";
-import { gitScope, gitState, repo, turn, turnFiles } from "../state/git.ts";
+import { branchChanges, gitScope, gitState, repo, turn, turnFiles } from "../state/git.ts";
 
 const LETTER: Record<GitFile["status"], string> = {
   added: "A",
@@ -52,6 +52,15 @@ function startStatusUpdates(): () => void {
     if (turn.get() === t) turnFiles.set(files);
   });
 
+  const refreshBranch = coalesced(async () => {
+    const r = repo.get();
+    if (!r || gitScope.get() !== "branch") return;
+    const b = await gitBranchBase(r).catch(() => null);
+    if (!b) return void (repo.get() === r && branchChanges.set("none"));
+    const files = await gitChangesSince(r, b.base).catch(() => null);
+    if (files && repo.get() === r) branchChanges.set({ repo: r, ...b, files });
+  });
+
   // One snapshot per Enter, at most once a second: holding Enter must not flood git.
   let lastSnapshot = 0;
   commands.turnStarted = () => {
@@ -71,14 +80,18 @@ function startStatusUpdates(): () => void {
     repo.subscribe(() => {
       gitState.set(null);
       turn.set(null);
+      branchChanges.set(null);
       refreshStatus();
+      refreshBranch();
     }),
     turn.subscribe(refreshTurn),
+    gitScope.subscribe(refreshBranch),
   ];
   const listener = onGitChanged((r) => {
     if (r !== repo.get()) return;
     refreshStatus();
     refreshTurn();
+    refreshBranch();
   });
   return () => {
     unsubs.forEach((u) => u());
@@ -98,19 +111,20 @@ export function mount(parent: HTMLElement): () => void {
   scope.className = "git-scope";
   scope.setAttribute("role", "group");
   scope.setAttribute("aria-label", "Changes to list");
-  const scopeButton = (value: "all" | "turn", label: string, title: string) => {
+  const scopeButton = (value: "all" | "turn" | "branch", label: string, title: string) => {
     const b = Object.assign(document.createElement("button"), { textContent: label, title });
     b.onclick = () => gitScope.set(value);
     return b;
   };
   const allButton = scopeButton("all", "All", "Every uncommitted change");
   const turnButton = scopeButton("turn", "This Turn", "Only what changed since you last pressed Enter in a terminal");
-  scope.append(allButton, turnButton);
+  const branchButton = scopeButton("branch", "Branch", "Everything this branch changed since it left the default branch, commits included");
+  scope.append(allButton, turnButton, branchButton);
   const panel = document.createElement("div");
   panel.className = "git-panel";
   parent.append(scope, panel);
 
-  const row = (f: GitFile, r: string, base?: string) => {
+  const row = (f: GitFile, r: string, base?: string, baseLabel?: string) => {
     const el = document.createElement("div");
     el.className = `git-row git-${f.status}`;
     el.tabIndex = 0;
@@ -121,7 +135,7 @@ export function mount(parent: HTMLElement): () => void {
     const counts = Object.assign(document.createElement("span"), { className: "git-counts" });
     if (f.added) counts.append(Object.assign(document.createElement("span"), { className: "git-added-count", textContent: `+${f.added}` }));
     if (f.removed) counts.append(Object.assign(document.createElement("span"), { className: "git-removed-count", textContent: `−${f.removed}` }));
-    const open = (preview: boolean) => openDoc(f.path, "diff", { preview, staged: f.staged, base });
+    const open = (preview: boolean) => openDoc(f.path, "diff", { preview, staged: f.staged, base, baseLabel });
     el.onclick = () => open(true);
     el.ondblclick = () => open(false);
     el.onkeydown = (e) => {
@@ -134,10 +148,10 @@ export function mount(parent: HTMLElement): () => void {
     return el;
   };
 
-  const section = (title: string, files: GitFile[], r: string, base?: string) => {
+  const section = (title: string, files: GitFile[], r: string, base?: string, baseLabel?: string) => {
     const sec = document.createElement("section");
     const head = Object.assign(document.createElement("div"), { className: "git-section-head", textContent: `${title} (${files.length})` });
-    sec.append(head, ...files.map((f) => row(f, r, base)));
+    sec.append(head, ...files.map((f) => row(f, r, base, baseLabel)));
     return sec;
   };
 
@@ -149,6 +163,13 @@ export function mount(parent: HTMLElement): () => void {
     const st = gitState.get();
     const r = repo.get();
     if (!st || !r) return panel.replaceChildren();
+    branchButton.setAttribute("aria-pressed", String(gitScope.get() === "branch"));
+    if (gitScope.get() === "branch") {
+      const b = branchChanges.get();
+      if (b === "none") return panel.replaceChildren(empty("No main or master branch to compare with."));
+      if (!b || b.repo !== r) return panel.replaceChildren();
+      return panel.replaceChildren(b.files.length ? section(`Since ${b.name}`, b.files, r, b.base, `since ${b.name}`) : empty(`No changes against ${b.name}.`));
+    }
     if (gitScope.get() === "turn") {
       const t = turn.get();
       const files = turnFiles.get();
@@ -168,7 +189,7 @@ export function mount(parent: HTMLElement): () => void {
     panel.replaceChildren(...parts);
   };
 
-  const unsubs = [gitState.subscribe(render), turn.subscribe(render), turnFiles.subscribe(render), gitScope.subscribe(render)];
+  const unsubs = [gitState.subscribe(render), turn.subscribe(render), branchChanges.subscribe(render), turnFiles.subscribe(render), gitScope.subscribe(render)];
   render();
 
   return () => {

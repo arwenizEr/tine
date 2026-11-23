@@ -223,6 +223,12 @@ async fn git_snapshot(repo: String) -> Result<String, AppError> {
     git::snapshot(abs(&repo)?)
 }
 
+/// The fork point from the default branch, for listing a branch's whole work.
+#[tauri::command(rename_all = "snake_case")]
+async fn git_branch_base(repo: String) -> Result<Option<git::BranchBase>, AppError> {
+    git::branch_base(abs(&repo)?)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn git_changes_since(repo: String, base: String) -> Result<Vec<git::FileChange>, AppError> {
     git::changes_since(abs(&repo)?, &base)
@@ -441,6 +447,7 @@ pub fn run() {
             git_diff_file,
             git_snapshot,
             git_changes_since,
+            git_branch_base,
             settings_load,
             open_url
         ]);

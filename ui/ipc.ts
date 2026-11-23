@@ -140,6 +140,8 @@ export const gitDiffFile = (repo: string, path: string, staged: boolean, base?: 
   invoke<GitDiff>("git_diff_file", { repo, path, staged, base });
 /** Records the working tree; returns a snapshot id for `gitChangesSince` and `gitDiffFile`. */
 export const gitSnapshot = (repo: string) => invoke<string>("git_snapshot", { repo });
+/** Where the branch forked from the default branch; `base` works with `gitChangesSince`. */
+export const gitBranchBase = (repo: string) => invoke<{ name: string; base: string } | null>("git_branch_base", { repo });
 export const gitChangesSince = (repo: string, base: string) => invoke<GitFile[]>("git_changes_since", { repo, base });
 
 export const onGitChanged = (handler: (repo: string) => void) =>

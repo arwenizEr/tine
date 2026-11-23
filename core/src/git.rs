@@ -168,7 +168,7 @@ fn base_tree<'r>(r: &'r Repository, base: &str) -> Result<Tree<'r>, AppError> {
     Ok(r.find_tree(id)?)
 }
 
-/// Files that differ between a snapshot and the working tree now: what changed since it was taken.
+/// Files that differ between a snapshot (or any tree id) and the working tree now: what changed since it was taken.
 pub fn changes_since(repo: &Path, base: &str) -> Result<Vec<FileChange>, AppError> {
     let r = open(repo)?;
     let tree = base_tree(&r, base)?;
@@ -185,6 +185,50 @@ pub fn changes_since(repo: &Path, base: &str) -> Result<Vec<FileChange>, AppErro
         }
     }
     Ok(files)
+}
+
+#[derive(Serialize, Debug)]
+pub struct BranchBase {
+    /// The branch compared against, such as "origin/main".
+    pub name: String,
+    /// Tree of the commit where the current branch left it; use with [`changes_since`].
+    pub base: String,
+}
+
+/// Where the current branch forked from the default branch, so the branch's whole work
+/// (commits and uncommitted changes) can be listed against it. None without a default branch.
+pub fn branch_base(repo: &Path) -> Result<Option<BranchBase>, AppError> {
+    let r = open(repo)?;
+    let Ok(head) = r.head().and_then(|h| h.peel_to_commit()) else {
+        return Ok(None);
+    };
+    let origin_head = r
+        .find_reference("refs/remotes/origin/HEAD")
+        .ok()
+        .and_then(|h| h.symbolic_target().ok().flatten().map(str::to_string));
+    let candidates = origin_head.into_iter().chain(
+        [
+            "refs/remotes/origin/main",
+            "refs/remotes/origin/master",
+            "refs/heads/main",
+            "refs/heads/master",
+        ]
+        .map(String::from),
+    );
+    for name in candidates {
+        let Ok(target) = r.find_reference(&name).and_then(|t| t.peel_to_commit()) else {
+            continue;
+        };
+        let fork = r.merge_base(head.id(), target.id())?;
+        return Ok(Some(BranchBase {
+            name: name
+                .trim_start_matches("refs/remotes/")
+                .trim_start_matches("refs/heads/")
+                .to_string(),
+            base: r.find_commit(fork)?.tree_id().to_string(),
+        }));
+    }
+    Ok(None)
 }
 
 /// Both full texts of one file's change; CodeMirror computes the visual diff.
@@ -459,6 +503,33 @@ pub mod tests {
             ("1\n2\n", "1\n2\n3\n")
         );
         assert_eq!(changes_since(&t.0, "nope").unwrap_err().code, "invalid");
+    }
+
+    #[test]
+    fn branch_base_lists_commits_and_edits_since_the_fork() {
+        let (t, r) = repo();
+        assert!(branch_base(&t.0).unwrap().is_none()); // no commits yet
+        fs::write(t.path("a.txt"), "1\n").unwrap();
+        commit_all(&t, &["a.txt"], "init");
+        let fork = r.head().unwrap().peel_to_commit().unwrap();
+        r.branch("feature", &fork, false).unwrap();
+        r.set_head("refs/heads/feature").unwrap();
+        fs::write(t.path("b.txt"), "b\n").unwrap();
+        commit_all(&t, &["b.txt"], "on feature");
+        fs::write(t.path("a.txt"), "1\n2\n").unwrap(); // uncommitted
+
+        let b = branch_base(&t.0).unwrap().unwrap();
+        assert_eq!(b.name, "main");
+        let mut got: Vec<_> = changes_since(&t.0, &b.base)
+            .unwrap()
+            .into_iter()
+            .map(|f| (f.path.rsplit('/').next().unwrap().to_string(), f.status))
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            [("a.txt".to_string(), "modified"), ("b.txt".to_string(), "added")]
+        );
     }
 
     #[test]
