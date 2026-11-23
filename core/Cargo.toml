@@ -22,3 +22,8 @@ notify = "9.0.0"
 # No https/ssh: tine never talks to remotes.
 git2 = { version = "0.21.0", default-features = false }
 trash = "5.4.0"
+
+# glib 0.18 (Linux, through tauri's gtk 0.18) with the RUSTSEC-2024-0429 fix from glib 0.20
+# applied. Remove once tauri moves to gtk-rs 0.20 or later.
+[patch.crates-io]
+glib = { path = "vendor/glib" }
