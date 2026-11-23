@@ -1,7 +1,7 @@
 import { errorMessage, fsReadFile, settingsSet } from "../ipc.ts";
 import { settings } from "../state/settings.ts";
 
-type Key = "font_family" | "font_size" | "theme" | "shell";
+type Key = "font_family" | "font_size" | "theme" | "shell" | "editor";
 
 /** Monospace fonts worth offering; only the installed ones are listed. */
 const FONTS = [
@@ -54,7 +54,7 @@ export function openSettings(onEditFile: () => void): void {
   error.setAttribute("aria-live", "polite");
   form.append(title);
 
-  for (const [key, label] of [["font_family", "Font"], ["font_size", "Font size"], ["theme", "Theme"], ["shell", "Shell for new tabs"]] as const) {
+  for (const [key, label] of [["font_family", "Font"], ["font_size", "Font size"], ["theme", "Theme"], ["shell", "Shell for new tabs"], ["editor", "Open in Editor uses"]] as const) {
     const select = document.createElement("select");
     selects[key] = select;
     select.onchange = async () => {
@@ -78,6 +78,7 @@ export function openSettings(onEditFile: () => void): void {
   fill(selects.font_size, [["", "Default (13)"], ...sizes], s.font_size?.toString() ?? "");
   fill(selects.theme, [["", "Follow system"], ["light", "Light"], ["dark", "Dark"]], s.theme === "system" ? "" : (s.theme ?? ""));
   fill(selects.shell, [["", "Login shell (default)"]], s.shell ?? "");
+  fill(selects.editor, [["", "VS Code (default)"], ["cursor", "Cursor"], ["zed", "Zed"]], s.editor === "vscode" ? "" : (s.editor ?? ""));
   void systemShells().then((shells) => fill(selects.shell, [["", "Login shell (default)"], ...shells.map((p): [string, string] => [p, p])], s.shell ?? ""));
 
   const editFile = Object.assign(document.createElement("button"), { type: "button", className: "link-button", textContent: "Shortcuts and more: edit settings.toml" });

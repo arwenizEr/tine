@@ -2,12 +2,12 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
 import { dirname, hasControlChars } from "./paths.ts";
 import { commands } from "./state/commands.ts";
-import { openDoc, selected, treeRoot } from "./state/files.ts";
+import { activeDocId, docs, openDoc, selected, treeRoot } from "./state/files.ts";
 import { followMode, isCompact, sidebarVisible, viewerVisible } from "./state/layout.ts";
 import { gitState, repo, sidebarView } from "./state/git.ts";
 import { settings, settingsPath } from "./state/settings.ts";
@@ -151,6 +151,15 @@ export function mountApp(root: HTMLElement): () => void {
     { label: "Toggle Follow Mode", run: () => followMode.set(!followMode.get()) },
     { label: "Find in Terminal", run: () => term.find() },
     { label: "Search in Files…", run: () => palette.open("search") },
+    {
+      label: "Open in Editor",
+      run: () => {
+        const doc = docs.get().find((d) => d.id === activeDocId.get());
+        if (!doc || doc.kind === "dir") return toast("Open a file in the viewer first.");
+        const at = viewer.cursorIn(doc.path);
+        openInEditor(doc.path, at.line, at.col).catch((e) => toast(errorMessage(e)));
+      },
+    },
     { label: "Clear Terminal", run: () => term.clear() },
     ...(terminal.isMac ? [{ label: "Allow Full Disk Access…", run: () => void openFullDiskAccessSettings() }] : []),
     { label: "Settings…", run: () => openSettings(openSettingsFile) },

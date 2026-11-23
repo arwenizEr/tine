@@ -256,6 +256,47 @@ async fn open_url(url: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// `path` for the path part of a URL: everything but letters, digits, `-._~/` percent-encoded.
+fn url_path(path: &str) -> String {
+    path.bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Opens a file at a line in the editor chosen in the settings, through the editor's own URL
+/// scheme (works without its command-line tool on PATH). Only the known editors are built here,
+/// so this never opens an arbitrary URL.
+#[tauri::command(rename_all = "snake_case")]
+async fn open_in_editor(app: AppHandle, path: String, line: u32, col: u32) -> Result<(), AppError> {
+    let path = abs(&path)?;
+    let editor = settings_path(&app)
+        .ok()
+        .and_then(|p| settings::load(&p).ok())
+        .and_then(|s| s.editor)
+        .unwrap_or_else(|| "vscode".into());
+    let url = format!(
+        "{editor}://file{}:{}:{}",
+        url_path(&path.to_string_lossy()),
+        line.max(1),
+        col.max(1)
+    );
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener)
+        .arg("--")
+        .arg(&url)
+        .spawn()?;
+    Ok(())
+}
+
 /// Frontend errors, written to stderr: the release webview has no console to read them from.
 #[tauri::command]
 async fn log_error(message: String) {
@@ -375,6 +416,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             full_disk_access,
             log_error,
+            open_in_editor,
             settings_set,
             open_full_disk_access_settings,
             pty_spawn,
@@ -418,7 +460,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{abs, is_openable_url};
+    use super::{abs, is_openable_url, url_path};
+
+    #[test]
+    fn url_path_encodes_everything_but_safe_characters() {
+        assert_eq!(
+            url_path("/Users/me/my app/a#b?.rs"),
+            "/Users/me/my%20app/a%23b%3F.rs"
+        );
+        assert_eq!(url_path("/ş"), "/%C5%9F");
+    }
 
     #[test]
     fn only_web_and_mail_links_open() {

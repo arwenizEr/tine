@@ -13,6 +13,8 @@ pub struct Settings {
     pub theme: Option<String>,
     /// Shell for new tabs; defaults to $SHELL.
     pub shell: Option<String>,
+    /// Editor for "Open in Editor": "vscode" (default), "cursor" or "zed".
+    pub editor: Option<String>,
     /// Action name -> key chord such as "cmd+t" or "ctrl+shift+t".
     pub keybindings: BTreeMap<String, String>,
 }
@@ -34,6 +36,9 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 
 # Shell for new tabs. Default: your login shell ($SHELL).
 # shell = "/bin/zsh"
+
+# Editor for "Open in Editor": "vscode", "cursor" or "zed".
+# editor = "vscode"
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
@@ -82,6 +87,14 @@ fn parse(text: &str) -> Result<Settings, AppError> {
             format!("theme must be system, light or dark, not \"{theme}\""),
         ));
     }
+    if let Some(editor) = &settings.editor
+        && !EDITORS.contains(&editor.as_str())
+    {
+        return Err(AppError::new(
+            "invalid_settings",
+            format!("editor must be vscode, cursor or zed, not \"{editor}\""),
+        ));
+    }
     if let Some(size) = settings.font_size
         && !(6.0..=72.0).contains(&size)
     {
@@ -94,7 +107,10 @@ fn parse(text: &str) -> Result<Settings, AppError> {
 }
 
 /// Top-level keys the settings window may change; keybindings stay a file-only setting.
-const EDITABLE: [&str; 4] = ["font_family", "font_size", "theme", "shell"];
+const EDITABLE: [&str; 5] = ["font_family", "font_size", "theme", "shell", "editor"];
+
+/// Editors "Open in Editor" can hand a file to; each opens `<name>://file/<path>:<line>:<col>`.
+pub const EDITORS: [&str; 3] = ["vscode", "cursor", "zed"];
 
 /// Sets one top-level setting in the file, or comments it out (back to the default) when
 /// `value` is None. Edits the line in place so the user's comments and layout survive, and

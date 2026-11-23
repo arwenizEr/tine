@@ -152,6 +152,7 @@ export type Settings = {
   font_size?: number;
   theme?: "system" | "light" | "dark";
   shell?: string;
+  editor?: "vscode" | "cursor" | "zed";
   keybindings: Record<string, string>;
 };
 
@@ -162,6 +163,9 @@ export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("
 export const settingsSet = (key: string, value: string | number | null) => invoke<Settings>("settings_set", { key, value });
 
 // --- App ---
+
+/** Opens a file at a line in the editor chosen in the settings (VS Code by default). */
+export const openInEditor = (path: string, line: number, col: number) => invoke<void>("open_in_editor", { path, line, col });
 
 export const openUrl = (url: string) => invoke<void>("open_url", { url }).catch(() => {});
 

@@ -10,6 +10,7 @@ import {
   fsUnwatch,
   fsWatch,
   fsWriteFile,
+  openInEditor,
   gitDiffFile,
   onFsChanged,
   onGitChanged,
@@ -25,6 +26,19 @@ import { infoCard, loadContent } from "./content.ts";
 import { createState, readOnlyExtensions } from "./editor.ts";
 import { renderFolder } from "./folder.ts";
 import { renderMarkdown } from "./markdown.ts";
+
+/** Line and column of the cursor in the viewer's editor for `path` (the focused one first), else 1:1. */
+export function cursorIn(path: string): { line: number; col: number } {
+  const doc = docs.get().find((d) => d.id === activeDocId.get());
+  const shown = [...document.querySelectorAll<HTMLElement>(".viewer .cm-editor")].filter((e) => e.offsetParent);
+  const focused = document.activeElement?.closest<HTMLElement>(".viewer .cm-editor");
+  const dom = focused ?? shown.at(-1);
+  const cm = doc?.path === path && dom ? EditorView.findFromDOM(dom) : null;
+  if (!cm) return { line: 1, col: 1 };
+  const head = cm.state.selection.main.head;
+  const line = cm.state.doc.lineAt(head);
+  return { line: line.number, col: head - line.from + 1 };
+}
 
 /**
  * Selected lines in the viewer as "path:3-7": the focused editor's, or else whichever shown
@@ -388,8 +402,9 @@ export function mount(parent: HTMLElement): () => void {
         return;
       case "text":
         renderBar(doc.id, l);
+        toolbar.hidden = false;
+        toolbar.replaceChildren(el("span", "toolbar-spacer"), editorButton(doc.path));
         if (l.markdown) {
-          toolbar.hidden = false;
           const toggle = (mode: TextDoc["mode"]) => () => {
             l.mode = mode;
             render();
@@ -399,7 +414,7 @@ export function mount(parent: HTMLElement): () => void {
           const source = button("Source", toggle("source"));
           rendered.setAttribute("aria-pressed", String(l.mode === "rendered"));
           source.setAttribute("aria-pressed", String(l.mode === "source"));
-          toolbar.replaceChildren(rendered, source);
+          toolbar.replaceChildren(rendered, source, el("span", "toolbar-spacer"), editorButton(doc.path));
         }
         if (l.markdown && l.mode === "rendered") {
           markdownHost.hidden = false;
@@ -419,6 +434,13 @@ export function mount(parent: HTMLElement): () => void {
     }
   };
 
+  /** Opens `path` in the external editor at the cursor of the focused (or the file's) editor. */
+  const editorButton = (path: string) =>
+    button("Open in Editor", () => {
+      const at = cursorIn(path);
+      openInEditor(path, at.line, at.col).catch((e) => toast(errorMessage(e)));
+    });
+
   const renderDiff = (doc: Doc, l: DiffDoc) => {
     toolbar.hidden = false;
     const layout = (value: typeof diffLayout, label: string) => {
@@ -431,7 +453,7 @@ export function mount(parent: HTMLElement): () => void {
     };
     const spacer = el("span", "toolbar-spacer");
     const openFile = button("Open File", () => openDoc(doc.path, "file"));
-    toolbar.replaceChildren(layout("unified", "Unified"), layout("split", "Side by Side"), spacer, openFile);
+    toolbar.replaceChildren(layout("unified", "Unified"), layout("split", "Side by Side"), spacer, openFile, editorButton(doc.path));
     if (l.binary) {
       infoHost.hidden = false;
       infoHost.replaceChildren(infoCard(basename(doc.path), null, "Binary or larger than 2 MB: no diff shown"));

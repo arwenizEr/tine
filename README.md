@@ -55,6 +55,7 @@ For the dot and desktop notifications, the agent has to report to the terminal. 
 - Double-click a folder to `cd` the terminal there; drag a file into the terminal to paste its path.
 - Create, rename and move to Trash from the tree's context menu.
 - **Search in files:** Cmd+Shift+F finds a text in every file git does not ignore and opens the match at its line.
+- **Open in Editor:** hands the file to VS Code, Cursor or Zed at the cursor's line, for edits bigger than tine is for.
 
 ### Fits any screen
 - Resizable panels, each of which can be hidden.
@@ -111,7 +112,7 @@ Shortcuts can be changed in `settings.toml` (see [Settings](#settings)).
 
 ## Settings
 
-Click **⚙ Settings** at the right end of the terminal tabs (or press Cmd+,) to pick the font, font size, theme and shell. Changes apply at once.
+Click **⚙ Settings** at the right end of the terminal tabs (or press Cmd+,) to pick the font, font size, theme, shell and editor. Changes apply at once.
 
 Everything is stored in `~/.config/tine/settings.toml`, which is created on first start with every option commented out. Shortcuts are changed only there. Open it from the settings window, or with Cmd+P → `> Open Settings File`; saved edits apply at once.
 
@@ -120,6 +121,7 @@ font_family = "JetBrains Mono, Menlo, monospace"
 font_size = 14
 theme = "system"        # "system", "light" or "dark"
 shell = "/bin/zsh"      # default: your login shell
+editor = "cursor"       # for Open in Editor: "vscode" (default), "cursor" or "zed"
 
 [keybindings]
 newTab = "cmd+t"
