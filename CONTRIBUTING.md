@@ -25,6 +25,7 @@ npm run tauri dev
 | `ui/ipc.ts` | The only file that calls the core |
 | `core/` | Rust engine on Tauri 2: PTYs (`portable-pty`), git (`git2`), file watching (`notify`), settings |
 | `core/src/lib.rs` | Every command the interface can call |
+| `core/src/sandbox.rs` | The Seatbelt profile for restricted tabs |
 | `core/shell-integration/` | zsh and bash scripts that report the folder and command boundaries |
 | `scripts/` | Build and signing helpers |
 

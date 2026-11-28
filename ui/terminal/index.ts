@@ -51,7 +51,8 @@ function themeFromCss(): ITheme {
 
 /** Terminal panel actions, called by app-level shortcuts. */
 export type TerminalActions = {
-  newTab(cwd?: string): void;
+  /** With `restricted`, the shell may write only to `cwd` (see core/src/sandbox.rs). */
+  newTab(cwd?: string, restricted?: boolean): void;
   closeTab(): void;
   selectTab(index: number): void;
   clear(): void;
@@ -173,7 +174,7 @@ export function mount(root: HTMLElement): TerminalActions {
     },
   });
 
-  const create = async (cwd?: string, beside?: number) => {
+  const create = async (cwd?: string, beside?: number, restricted = false) => {
     const id = ++nextId;
     const el = document.createElement("div");
     el.className = "terminal";
@@ -216,7 +217,7 @@ export function mount(root: HTMLElement): TerminalActions {
 
     const session: Session = { id, term, fit, search: searchAddon, blocks: new Blocks(term, token), el, ptyId: null };
     sessions.set(id, session);
-    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle" }]);
+    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle", sandboxRoot: restricted ? (cwd ?? null) : null }]);
 
     // Activity marks: busy while the program prints on its own, attention when a long run ends unseen.
     let lastInput = 0;
@@ -272,9 +273,10 @@ export function mount(root: HTMLElement): TerminalActions {
       onOutput();
     };
     try {
-      // A restored folder may be gone by now: start in the home folder instead.
-      ptyId = await ptySpawn(term.cols, term.rows, onBytes, token, cwd).catch((e) => {
-        if (!cwd) throw e;
+      // A restored folder may be gone by now: start in the home folder instead. Never for a
+      // restricted tab, where the home folder would make everything writable.
+      ptyId = await ptySpawn(term.cols, term.rows, onBytes, token, cwd, restricted ? "restricted" : undefined).catch((e) => {
+        if (!cwd || restricted) throw e;
         return ptySpawn(term.cols, term.rows, onBytes, token);
       });
     } catch (e) {
@@ -376,10 +378,15 @@ export function mount(root: HTMLElement): TerminalActions {
 
   // Restore tabs: the same folders as last time (the programs that ran there are not restarted).
   const SAVED = "tabs";
-  type Saved = { cwds: (string | null)[]; active: number };
+  // `roots[i]` set: tab i was restricted and reopens restricted to that folder.
+  type Saved = { cwds: (string | null)[]; active: number; roots?: (string | null)[] };
   const save = () => {
     const list = tabs.get();
-    const saved: Saved = { cwds: list.map((t) => t.cwd), active: list.findIndex((t) => t.id === activeTabId.get()) };
+    const saved: Saved = {
+      cwds: list.map((t) => t.cwd),
+      active: list.findIndex((t) => t.id === activeTabId.get()),
+      roots: list.map((t) => t.sandboxRoot),
+    };
     try {
       localStorage.setItem(SAVED, JSON.stringify(saved));
     } catch {
@@ -394,7 +401,12 @@ export function mount(root: HTMLElement): TerminalActions {
   }
   const restore = saved?.cwds.length ? saved : { cwds: [null], active: 0 };
   const unsubSave: (() => void)[] = [];
-  void Promise.all(restore.cwds.map((cwd) => create(cwd ?? undefined))).then(() => {
+  void Promise.all(
+    restore.cwds.map((cwd, i) => {
+      const root = saved?.roots?.[i];
+      return root ? create(root, undefined, true) : create(cwd ?? undefined);
+    }),
+  ).then(() => {
     const tab = tabs.get()[restore.active];
     if (tab) activate(tab.id);
     unsubSave.push(tabs.subscribe(save), activeTabId.subscribe(save));
@@ -402,7 +414,7 @@ export function mount(root: HTMLElement): TerminalActions {
 
   return {
     host,
-    newTab: (cwd) => void create(cwd),
+    newTab: (cwd, restricted) => void create(cwd, undefined, restricted),
     closeTab: () => {
       const s = active();
       if (s) close(s.id);
@@ -429,7 +441,9 @@ export function mount(root: HTMLElement): TerminalActions {
         layout();
         active()?.term.focus();
       } else if (id !== null) {
-        void create(activeCwd() ?? undefined, id);
+        // The new half keeps the active tab's restriction and its folder.
+        const root = tabs.get().find((t) => t.id === id)?.sandboxRoot;
+        void (root ? create(root, id, true) : create(activeCwd() ?? undefined, id));
       }
     },
     block: (direction) => active()?.blocks.jump(direction),

@@ -26,6 +26,7 @@ Run Claude Code, Codex or any CLI agent and review its changes live, on one scre
 - **Full terminal:** tabs, split view, command blocks, clickable paths, GPU rendering.
 - **Files:** a tree that follows your shell, previews, light editing, search in files, Open in Editor (VS Code, Cursor, Zed).
 - **Web panel:** docs, a dev server or a video in place of the viewer, with bookmarks.
+- **Restricted tabs (macOS):** a shell where every tool works, but writes only to its folder and a private copy of your home, and cannot read your keys.
 
 No built-in AI, account or telemetry. A Rust core on the system webview, under 20 MB.
 
@@ -76,6 +77,27 @@ bookmarks = ["https://www.youtube.com/"]
 [keybindings]
 palette = "cmd+shift+p"
 ```
+
+## Restricted tabs
+
+**New Restricted Tab** (in the command palette) opens a shell under the macOS sandbox, in the active tab's folder. Everything you run there runs inside the sandbox, the folder's `package.json` scripts, `Makefile` and hooks included, and every tool keeps working: git, npm, cargo, pip, Claude Code, Codex and the rest.
+
+- **Own home.** `HOME` is a private copy of your home: your dotfiles and tool configs (`~/.config`, `~/.gitconfig`, `~/.claude`, `~/.cargo`, ...) are copied once as APFS clones, so tools find their settings and write their state without changing the real ones. Toolchains (`~/.rustup`, `~/.nvm`) and your visible folders are linked read-only; `~/.cache` and `~/Library/Caches` start empty. The copy lives in tine's app data (`sandbox-home`); delete it to start over from your current home.
+- **Writes** go only to the tab's folder, the private home and temp folders. In repos that existed when the tab opened, `.git/hooks` and `.git/config` stay read-only, because your normal git would run them later; repos made in the tab (`git init`, `clone`, `cargo new`) are its own.
+- **Secrets** stay out: no `~/.ssh`, `~/.aws`, `~/.gnupg`, credential files, keychain, browser cookies, or Docker's VM. Tools that need your logins (`gh`, `claude`, `git push`) need `secrets = true`.
+- **No way out** through `open`, AppleScript, `launchctl` or local sockets such as Docker's; `sudo` and other setuid programs do not run.
+- It refuses to start in your home folder, its parents, `~/Library` or a hidden folder in your home.
+
+```toml
+[sandbox]
+secrets = true                # keychain, ssh-agent, ~/.ssh, ~/.aws, ...: default false
+network = false               # default true
+writable = ["~/data"]         # real folders writable besides the tab's
+deny_read = ["~/secrets"]     # added to the built-in list
+shared = [".pyenv"]           # linked read-only instead of copied, like ~/.rustup
+```
+
+This protects against mistakes and careless tools, not against code written to break out. Run a folder's files from a normal tab and they run outside the sandbox, so something a restricted tab wrote there can run unsandboxed later. Claude Code's own sandbox cannot start inside this one (macOS does not nest them); it does not need to, since every command Claude runs is already sandboxed.
 
 ## Security
 

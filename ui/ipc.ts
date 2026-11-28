@@ -48,10 +48,11 @@ export function ptySpawn(
   onData: (bytes: Uint8Array) => void,
   token: string,
   cwd?: string,
+  sandbox?: "restricted",
 ): Promise<number> {
   const channel = new tauri.core.Channel<ArrayBuffer>();
   channel.onmessage = (bytes) => onData(new Uint8Array(bytes));
-  return invoke("pty_spawn", { cwd, token, cols, rows, on_data: channel });
+  return invoke("pty_spawn", { cwd, token, sandbox, cols, rows, on_data: channel });
 }
 
 // Commands run concurrently in Rust, so two quick writes could reach the shell out of order.
