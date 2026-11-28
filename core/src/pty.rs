@@ -497,6 +497,18 @@ mod tests {
             .current_dir(&cwd.0)
             .status();
         assert!(git.unwrap().success());
+        // Two local servers; only the first is listed in local_ports.
+        let serve = || {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = l.local_addr().unwrap().port();
+            thread::spawn(move || {
+                for mut c in l.incoming().flatten() {
+                    let _ = c.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n");
+                }
+            });
+            port
+        };
+        let (open_port, closed_port) = (serve(), serve());
         // As in the app: HOME is the tab's private home (see sandbox::prepare_home).
         let private_home = TempDir::new();
         let home_probe = PathBuf::from(std::env::var("HOME").unwrap())
@@ -506,6 +518,7 @@ mod tests {
             deny_read: vec![secret.0.clone()],
             deny_write: vec![settings.0.clone()],
             network: false,
+            local_ports: vec![open_port],
             env: vec![
                 ("TINE_PROBE".into(), "on".into()),
                 ("HOME".into(), private_home.0.clone().into()),
@@ -539,6 +552,8 @@ mod tests {
             "/usr/bin/open -g /nonexistent 2>/dev/null; echo open=$?".into(),
             "/usr/bin/osascript -e 1 >/dev/null 2>&1; echo osa=$?".into(),
             "curl -s -m 3 -o /dev/null http://1.1.1.1 2>/dev/null; echo net=$?".into(),
+            format!("curl -s -m 3 -o /dev/null http://127.0.0.1:{open_port}/ 2>/dev/null; echo localport=$?"),
+            format!("curl -s -m 3 -o /dev/null http://127.0.0.1:{closed_port}/ 2>/dev/null; echo otherport=$?"),
             "[ \"$TINE_PROBE\" = on ]; echo env=$?".into(),
             "touch ~/.made-by-sandbox; echo ownhome_=$?".into(),
             "/usr/bin/security list-keychains >/dev/null 2>&1; echo keychain=$?".into(),
@@ -567,6 +582,7 @@ mod tests {
         assert_eq!(code("extra"), "0");
         assert_eq!(code("commit"), "0");
         assert_eq!(code("env"), "0");
+        assert_eq!(code("localport"), "0");
         assert_eq!(code("newrepo"), "0");
         assert_eq!(code("ownhome_"), "0");
         assert!(private_home.path(".made-by-sandbox").exists());
@@ -580,6 +596,7 @@ mod tests {
             "open",
             "osa",
             "net",
+            "otherport",
             "keychain",
         ] {
             assert_ne!(code(denied), "0", "{denied} should be denied: {text:?}");

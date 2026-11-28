@@ -120,6 +120,7 @@ fn restricted_policy(
             .into_iter()
             .collect(),
         network: s.network.unwrap_or(true),
+        local_ports: s.local_ports.clone(),
         secrets,
         sockets,
         env: vec![("HOME".into(), private_home.into())],

@@ -28,6 +28,8 @@ pub struct Settings {
 #[serde(default, deny_unknown_fields)]
 pub struct Sandbox {
     pub network: Option<bool>,
+    /// Local TCP ports a restricted tab may reach with the network off.
+    pub local_ports: Vec<u16>,
     /// Image for isolated tabs; it needs bash.
     pub image: Option<String>,
     /// Lets tools use your keys: the keychain, ssh-agent and SANDBOX_DENY_READ.
@@ -107,6 +109,7 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # Isolated: the shell runs as root in a Docker container that sees only its folder.
 # [sandbox]
 # network = true
+# local_ports = [3920]       # restricted tabs reach these on localhost even with network off
 # image = "debian:stable-slim"  # isolated tabs; needs bash
 # secrets = false            # true: tools may use the keychain, ssh-agent, ~/.ssh, ~/.aws, ...
 # writable = []              # real folders writable besides the tab's
@@ -196,6 +199,12 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         return Err(AppError::new(
             "invalid_settings",
             format!("sandbox.image must be an image name, not \"{image}\""),
+        ));
+    }
+    if settings.sandbox.local_ports.contains(&0) {
+        return Err(AppError::new(
+            "invalid_settings",
+            "sandbox.local_ports cannot hold 0",
         ));
     }
     if let Some(size) = settings.font_size
@@ -372,6 +381,8 @@ mod tests {
             "[sandbox]\nwritable = [\"relative/dir\"]",
             "[sandbox]\ndeny_read = [\"~user/x\"]",
             "[sandbox]\nnetwork = \"off\"",
+            "[sandbox]\nlocal_ports = [0]",
+            "[sandbox]\nlocal_ports = [70000]",
             "[sandbox]\nimage = \"--privileged\"",
         ] {
             std::fs::write(&path, bad).unwrap();
