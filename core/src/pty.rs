@@ -18,7 +18,7 @@ struct Session {
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     /// Docker CLI and container name of an isolated tab.
-    container: Option<(PathBuf, String)>,
+    container: Option<sandbox::Container>,
 }
 
 type Sessions = Arc<Mutex<HashMap<u32, Arc<Session>>>>;
@@ -121,6 +121,14 @@ impl PtyManager {
                         "an isolated tab needs Docker (Colima, OrbStack or Docker Desktop)",
                     )
                 })?;
+                let mut iso = iso;
+                let keep_as = iso.keep.then(|| sandbox::keep_image(Path::new(dir)));
+                if let Some(saved) = keep_as
+                    .as_ref()
+                    .filter(|i| sandbox::image_exists(&docker, i))
+                {
+                    iso.image = saved.clone();
+                }
                 let (args, name) = sandbox::isolated_args(
                     Path::new(dir),
                     Path::new(&home),
@@ -129,7 +137,11 @@ impl PtyManager {
                 )?;
                 let mut c = CommandBuilder::new(&docker);
                 c.args(args);
-                container = Some((docker, name));
+                container = Some(sandbox::Container {
+                    docker,
+                    name,
+                    keep_as,
+                });
                 c
             }
             Some(Sandbox::Restricted(mut policy)) => {
@@ -217,7 +229,7 @@ impl PtyManager {
             killer: Mutex::new(child.clone_killer()),
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
-            container,
+            container: container.clone(),
         };
         self.sessions.lock().unwrap().insert(id, Arc::new(session));
 
@@ -245,7 +257,12 @@ impl PtyManager {
                 on_data(batch);
             }
             let code = child.wait().ok().map(|s| s.exit_code() as i32);
-            sessions.lock().unwrap().remove(&id);
+            // The shell exited on its own (kill already took the session): a kept container
+            // stopped with it and is saved now.
+            let exited = sessions.lock().unwrap().remove(&id).is_some();
+            if let Some(c) = container.filter(|c| exited && c.keep_as.is_some()) {
+                sandbox::end(&c);
+            }
             on_exit(id, code);
         });
 
@@ -285,8 +302,8 @@ impl PtyManager {
             .unwrap()
             .remove(&id)
             .ok_or_else(|| AppError::new("not_found", format!("no pty {id}")))?;
-        if let Some((docker, name)) = &session.container {
-            sandbox::remove_container(docker, name);
+        if let Some(c) = &session.container {
+            sandbox::end(c);
             // Removing the container ends the docker CLI too, so it may be gone already.
             let _ = session.killer.lock().unwrap().kill();
             return Ok(());
@@ -648,6 +665,7 @@ mod tests {
         let iso = sandbox::Isolated {
             image: crate::settings::SANDBOX_IMAGE.into(),
             network: false,
+            keep: false,
         };
         let id = mgr
             .spawn_shell(
@@ -700,7 +718,7 @@ mod tests {
         }
         assert!(cwd.join("made-inside").exists());
 
-        let name = mgr.get(id).unwrap().container.clone().unwrap().1;
+        let name = mgr.get(id).unwrap().container.clone().unwrap().name;
         mgr.kill(id).unwrap();
         let left = std::process::Command::new(&docker)
             .args(["ps", "-aq", "--filter", &format!("name=^{name}$")])
@@ -723,6 +741,86 @@ mod tests {
             .output()
             .unwrap();
         assert!(left.stdout.is_empty(), "orphan {id} was not swept");
+    }
+
+    /// Kept isolated tabs: what a tab installs outside /work is there in the next one,
+    /// whether the tab was closed or its shell exited. Needs a running Docker.
+    #[test]
+    fn kept_isolated_tab_keeps_what_was_installed() {
+        let Some(docker) = sandbox::docker().filter(|d| {
+            std::process::Command::new(d)
+                .arg("info")
+                .output()
+                .is_ok_and(|o| o.status.success())
+        }) else {
+            eprintln!("skipping: Docker is not running");
+            return;
+        };
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("keep-test-{}", std::process::id()));
+        std::fs::create_dir_all(&cwd).unwrap();
+        let mgr = PtyManager::default();
+        let open = || {
+            let (tx, out) = mpsc::channel();
+            let (exit_tx, exit) = mpsc::channel();
+            let iso = sandbox::Isolated {
+                image: crate::settings::SANDBOX_IMAGE.into(),
+                network: false,
+                keep: true,
+            };
+            let id = mgr
+                .spawn_shell(
+                    "/bin/zsh",
+                    Some(cwd.to_string_lossy().into_owned()),
+                    None,
+                    Some(Sandbox::Isolated(iso)),
+                    200,
+                    24,
+                    move |b| {
+                        let _ = tx.send(b);
+                    },
+                    move |_, c| {
+                        let _ = exit_tx.send(c);
+                    },
+                )
+                .unwrap();
+            (id, out, exit)
+        };
+        // First tab: install something outside /work, then close the tab.
+        let (id, out, _) = open();
+        mgr.write(id, b"touch /root/closed; echo a_$((1+1))\r")
+            .unwrap();
+        wait_for(&out, "a_2");
+        mgr.kill(id).unwrap();
+        // Second tab sees it; this one ends by exiting its shell.
+        let (id, out, exit) = open();
+        mgr.write(
+            id,
+            b"ls /root/closed && touch /root/exited; echo b_$((1+1))\r",
+        )
+        .unwrap();
+        let text = wait_for(&out, "b_2");
+        assert!(!text.contains("No such file"), "{text:?}");
+        mgr.write(id, b"exit\r").unwrap();
+        exit.recv_timeout(Duration::from_secs(30)).unwrap();
+        // Third tab sees both.
+        let (id, out, _) = open();
+        mgr.write(
+            id,
+            b"ls /root/closed /root/exited >/dev/null 2>&1; echo c=$?_$((1+1))\r",
+        )
+        .unwrap();
+        let text = wait_for(&out, "_2");
+        mgr.kill(id).unwrap();
+        let image = sandbox::keep_image(&cwd);
+        sandbox::forget(&docker, &cwd).unwrap();
+        let _ = std::fs::remove_dir_all(&cwd);
+        assert!(text.contains("c=0_2"), "{text:?}");
+        assert!(
+            !sandbox::image_exists(&docker, &image),
+            "forget leaves {image}"
+        );
     }
 
     #[test]

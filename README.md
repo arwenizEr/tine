@@ -112,7 +112,7 @@ This protects against mistakes and careless tools, not against code written to b
 - `.git/hooks` and `.git/config` of the folder are read-only inside.
 - `network = false` under `[sandbox]` cuts the network; `image = "..."` picks another image with bash.
 - Closing the tab removes the container. Containers left by a crashed tine are removed when tine starts.
-- What you install is gone when the tab closes.
+- What you install is gone when the tab closes, unless `keep = true` under `[sandbox]`: then each folder's container is saved as an image when its tab ends and the next isolated tab there starts from it. **Reset Isolated Tabs Here** goes back to the plain image.
 
 The container is only as isolated as Docker's VM. Colima, for example, shares your whole home folder with its VM by default, so code that escapes the container could reach it. Limit the VM's `mounts` to your projects folder if that matters to you.
 
