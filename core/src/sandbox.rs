@@ -32,6 +32,9 @@ pub struct Isolated {
     pub network: bool,
     /// Saved as an image when the tab ends, and started from on the next (see `keep_image`).
     pub keep: bool,
+    /// Caio's token when the tab can reach it on `caio::NETWORK`; the tab gets
+    /// CAIO_MCP_URL and CAIO_HTTP_TOKEN to point its agents there.
+    pub caio: Option<String>,
 }
 
 /// A running isolated tab: what ends it, and the image it is saved as when `keep` is on.
@@ -419,8 +422,23 @@ pub fn isolated_args(
         a.extend(["-e".into(), var.into()]);
     }
     a.extend(["-e".into(), "LANG=C.UTF-8".into()]);
-    if !iso.network {
-        a.extend(["--network".into(), "none".into()]);
+    // Caio's internal network alone keeps the internet out; with the network on, an
+    // outbound network too.
+    let networks: &[&str] = match (iso.network, iso.caio.is_some()) {
+        (true, false) => &[],
+        (true, true) => &[crate::caio::OUT_NETWORK, crate::caio::NETWORK],
+        (false, true) => &[crate::caio::NETWORK],
+        (false, false) => &["none"],
+    };
+    for n in networks {
+        a.extend(["--network".into(), n.to_string()]);
+    }
+    if iso.caio.is_some() {
+        a.extend([
+            "-e".into(),
+            format!("CAIO_MCP_URL={}", crate::caio::CONTAINER_URL),
+        ]);
+        a.extend(["-e".into(), "CAIO_HTTP_TOKEN".into()]);
     }
     a.push(iso.image.clone());
     match integration {
@@ -647,6 +665,7 @@ mod tests {
             image: "debian:stable-slim".into(),
             network: false,
             keep: false,
+            caio: None,
         };
         let (a, name) = isolated_args(&dir.0, Path::new("/nonexistent-home"), None, &iso).unwrap();
         let s = a.join(" ");
@@ -667,10 +686,42 @@ mod tests {
             "values never on the command line"
         );
 
+        let with_caio = |network| Isolated {
+            image: "debian:stable-slim".into(),
+            network,
+            keep: false,
+            caio: Some("t0k3n".into()),
+        };
+        let off = isolated_args(&dir.0, Path::new("/x"), None, &with_caio(false))
+            .unwrap()
+            .0
+            .join(" ");
+        assert!(
+            off.contains("--network tine-caio ") && !off.contains("tine-out"),
+            "{off}"
+        );
+        assert!(
+            off.contains("-e CAIO_MCP_URL=http://caio:3920/mcp -e CAIO_HTTP_TOKEN "),
+            "{off}"
+        );
+        assert!(
+            !off.contains("t0k3n"),
+            "the token never goes on the command line"
+        );
+        let on = isolated_args(&dir.0, Path::new("/x"), None, &with_caio(true))
+            .unwrap()
+            .0
+            .join(" ");
+        assert!(
+            on.contains("--network tine-out --network tine-caio "),
+            "{on}"
+        );
+
         let bad = Isolated {
             image: "--privileged".into(),
             network: true,
             keep: false,
+            caio: None,
         };
         assert_eq!(
             isolated_args(&dir.0, Path::new("/x"), None, &bad)
