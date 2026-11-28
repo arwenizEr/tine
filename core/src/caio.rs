@@ -274,8 +274,7 @@ mod tests {
             network: true,
             ..Default::default()
         };
-        let mut prefix = vec![crate::sandbox::SANDBOX_EXEC.into()];
-        prefix.extend(crate::sandbox::args(&work.0, &real, &policy).unwrap());
+        let prefix = crate::sandbox::wrapper(&work.0, &real, &policy).unwrap();
         let targets = [
             Target {
                 home: plain.0.clone(),

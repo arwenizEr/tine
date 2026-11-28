@@ -258,10 +258,9 @@ async fn caio_connect(app: AppHandle) -> Result<Vec<String>, AppError> {
     let path = settings_path(&app)?;
     let s = settings::load(&path)?;
     let data = app.path().app_data_dir().map_err(AppError::io)?;
-    if cfg!(target_os = "macos") {
+    {
         let policy = restricted_policy(&s.sandbox, &path, &data)?;
-        let mut prefix = vec![sandbox::SANDBOX_EXEC.into()];
-        prefix.extend(sandbox::args(&std::env::temp_dir(), &home, &policy)?);
+        let prefix = sandbox::wrapper(&std::env::temp_dir(), &home, &policy)?;
         targets.push(caio::Target {
             home: data.join("sandbox-home"),
             prefix,
