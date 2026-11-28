@@ -83,7 +83,7 @@ palette = "cmd+shift+p"
 
 **New Restricted Tab** (in the command palette) opens a shell under the macOS sandbox, in the active tab's folder. Everything you run there runs inside the sandbox, the folder's `package.json` scripts, `Makefile` and hooks included, and every tool keeps working: git, npm, cargo, pip, Claude Code, Codex and the rest.
 
-- **Own home.** `HOME` is a private copy of your home: your dotfiles and tool configs (`~/.config`, `~/.gitconfig`, `~/.claude`, `~/.cargo`, ...) are copied once as APFS clones, so tools find their settings and write their state without changing the real ones. Toolchains (`~/.rustup`, `~/.nvm`) and your visible folders are linked read-only; `~/.cache` and `~/Library/Caches` start empty. The copy lives in tine's app data (`sandbox-home`); delete it to start over from your current home.
+- **Own home.** `HOME` is a private copy of your home: your dotfiles and tool configs (`~/.config`, `~/.gitconfig`, `~/.claude`, `~/.cargo`, ...) are copied once as APFS clones, so tools find their settings and write their state without changing the real ones. Toolchains (`~/.rustup`, `~/.nvm`) and your visible folders are linked read-only; `~/.cache` and `~/Library/Caches` start empty. The copy lives in tine's app data (`sandbox-home`); **Reset Sandbox Home…** starts it over from your current home.
 - **Writes** go only to the tab's folder, the private home and temp folders. In repos that existed when the tab opened, `.git/hooks` and `.git/config` stay read-only, because your normal git would run them later; repos made in the tab (`git init`, `clone`, `cargo new`) are its own.
 - **Secrets** stay out: no `~/.ssh`, `~/.aws`, `~/.gnupg`, credential files, keychain, browser cookies, or Docker's VM. Tools that need your logins (`gh`, `claude`, `git push`) need `secrets = true`.
 - **No way out** through `open`, AppleScript, `launchctl` or local sockets such as Docker's; `sudo` and other setuid programs do not run.
@@ -97,7 +97,10 @@ local_ports = [3920]          # reachable on localhost even with network off: a 
 writable = ["~/data"]         # real folders writable besides the tab's
 deny_read = ["~/secrets"]     # added to the built-in list
 shared = [".pyenv"]           # linked read-only instead of copied, like ~/.rustup
+folders = ["~/untrusted"]     # tabs opened here are always restricted
 ```
+
+Tabs tine opens in a `folders` entry (new tab, split, Open Terminal Here, restore) are always restricted, and a normal tab that `cd`s into one is warned. **Reset Sandbox Home…** in the command palette deletes the private home, so the next restricted tab copies your current config.
 
 This protects against mistakes and careless tools, not against code written to break out. Run a folder's files from a normal tab and they run outside the sandbox, so something a restricted tab wrote there can run unsandboxed later. Claude Code's own sandbox cannot start inside this one (macOS does not nest them); it does not need to, since every command Claude runs is already sandboxed.
 

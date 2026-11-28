@@ -163,7 +163,6 @@ export type Settings = {
 /** Reads ~/.config/<app>/settings.toml, creating a commented template the first time. */
 export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
 
-/** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
 // --- CompactAIO (core/src/caio.rs) ---
 
 export type CaioStatus = { configured: boolean; up: boolean };
@@ -175,8 +174,13 @@ export const caioCall = (tool: "search_docs" | "check_symbol" | "get_endpoint", 
 export const caioNote = (markdown: string) => invoke<string>("caio_note", { markdown });
 /** One line per agent and home, "claude (...): connected". */
 export const caioConnect = () => invoke<string[]>("caio_connect");
+/** `[sandbox] folders` as real paths: tabs there always open restricted. */
+export const sandboxFolders = () => invoke<string[]>("sandbox_folders");
+/** Deletes the private home of restricted tabs; the next restricted tab rebuilds it. */
+export const sandboxHomeReset = () => invoke<void>("sandbox_home_reset");
 export const caioIndex = (dir: string) => invoke<string>("caio_index", { dir });
 
+/** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
 export const settingsSet = (key: string, value: string | number | string[] | null) => invoke<Settings>("settings_set", { key, value });
 
 // --- App ---

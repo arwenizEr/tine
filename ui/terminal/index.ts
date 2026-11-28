@@ -4,10 +4,10 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
-import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
+import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite, sandboxFolders } from "../ipc.ts";
 import { toast } from "../components/toast.ts";
 import { notification } from "./marks.ts";
-import { findPathLinks, parseOsc7, PATH_MIME, rebase, resolve, shellQuote } from "../paths.ts";
+import { findPathLinks, isInside, parseOsc7, PATH_MIME, rebase, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { settings } from "../state/settings.ts";
@@ -175,7 +175,16 @@ export function mount(root: HTMLElement): TerminalActions {
     },
   });
 
+  // `[sandbox] folders`: tabs there always open restricted; core/src/lib.rs refuses others.
+  let folders: string[] = [];
+  const loadFolders = () => sandboxFolders().then((f) => (folders = f), () => folders);
+  let foldersLoaded = loadFolders();
+  const unsubFolders = settings.subscribe(() => void (foldersLoaded = loadFolders()));
+  const sandboxedFolder = (p: string) => folders.find((f) => isInside(f, p));
+
   const create = async (cwd?: string, beside?: number, kind?: SandboxKind) => {
+    await foldersLoaded;
+    if (!kind && cwd && sandboxedFolder(cwd)) kind = "restricted";
     const sandbox: TabSandbox | null = kind && cwd ? { kind, root: cwd } : null;
     const id = ++nextId;
     const el = document.createElement("div");
@@ -262,11 +271,16 @@ export function mount(root: HTMLElement): TerminalActions {
     if (beside !== undefined && sessions.has(beside)) splitPair.set([beside, id]);
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
+    let warned = false;
     term.parser.registerOscHandler(7, (data) => {
       const reported = parseOsc7(data);
       // An isolated shell reports container paths; outside /work there is no host folder.
       const dir = reported && sandbox?.kind === "isolated" ? rebase(reported, "/work", sandbox.root) : reported;
       if (dir) setTabCwd(id, dir);
+      if (dir && !sandbox && !warned && sandboxedFolder(dir)) {
+        warned = true;
+        toast(`${sandboxedFolder(dir)} is a sandboxed folder, but this tab is not: open a new tab there to run things sandboxed.`);
+      }
       return true;
     });
     term.registerLinkProvider(pathLinkProvider(session));
@@ -480,6 +494,7 @@ export function mount(root: HTMLElement): TerminalActions {
       if (s?.ptyId != null) void ptyWrite(s.ptyId, data).catch(() => {});
     },
     dispose: () => {
+      unsubFolders();
       unsubSave.forEach((u) => u());
       removeEventListener("focus", onWindowFocus);
       resizeObserver.disconnect();
