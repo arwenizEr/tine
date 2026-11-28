@@ -69,12 +69,13 @@ async fn settings_set(
 }
 
 /// The rules for a restricted tab, from the `[sandbox]` settings.
-/// `claude_dir` becomes Claude Code's config folder in the tab: its own, because the real
-/// ~/.claude and ~/.claude.json hold hooks and MCP servers that run outside the sandbox.
+/// `claude_dir` becomes Claude Code's config folder in the tab, filled from the user's own
+/// (see `sandbox::prepare_claude`); `claude_token` signs it in, as the keychain is blocked.
 fn restricted_policy(
     s: &settings::Sandbox,
     settings_file: &Path,
     claude_dir: &Path,
+    claude_token: Option<String>,
 ) -> Result<sandbox::Policy, AppError> {
     let home =
         std::env::var_os("HOME").ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
@@ -88,7 +89,7 @@ fn restricted_policy(
         Some(list) => expand(list.iter().map(String::as_str), home),
         None => expand(settings::SANDBOX_WRITABLE, home),
     };
-    std::fs::create_dir_all(claude_dir)?;
+    sandbox::prepare_claude(claude_dir, home)?;
     writable.extend([
         std::env::temp_dir(),
         "/private/tmp".into(),
@@ -106,12 +107,50 @@ fn restricted_policy(
             .into_iter()
             .collect(),
         network: s.network.unwrap_or(true),
-        env: vec![
+        env: [
             ("CLAUDE_CONFIG_DIR".into(), claude_dir.into()),
             // Its updater writes to ~/.local, which the sandbox does not allow.
             ("DISABLE_AUTOUPDATER".into(), "1".into()),
-        ],
+        ]
+        .into_iter()
+        .chain(claude_token.map(|t| ("CLAUDE_CODE_OAUTH_TOKEN".into(), t.into())))
+        .collect(),
     })
+}
+
+/// File in the app data folder with the token from `claude setup-token` for restricted tabs.
+const CLAUDE_TOKEN: &str = "claude-token";
+
+/// Saves the Claude Code token for restricted tabs, or forgets it with None.
+#[tauri::command(rename_all = "snake_case")]
+async fn claude_token_set(app: AppHandle, token: Option<String>) -> Result<(), AppError> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = app.path().app_data_dir().map_err(AppError::io)?;
+    let path = dir.join(CLAUDE_TOKEN);
+    let Some(token) = token else {
+        return match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        };
+    };
+    if token.is_empty() || token.len() > 512 || !token.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(AppError::new(
+            "invalid",
+            "not a token from claude setup-token",
+        ));
+    }
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join(format!("{CLAUDE_TOKEN}.tmp"));
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)?
+        .write_all(token.as_bytes())?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
 }
 
 // Commands are async so slow disk or PTY work never stalls the main (UI) thread.
@@ -134,12 +173,14 @@ async fn pty_spawn(
             let path = settings_path(&app)?;
             let s = settings::load(&path)
                 .map_err(|e| AppError::new("sandbox", format!("settings: {}", e.message)))?;
-            let claude = app
-                .path()
-                .app_data_dir()
-                .map_err(AppError::io)?
-                .join("sandbox-claude");
-            Some(restricted_policy(&s.sandbox, &path, &claude)?)
+            let data = app.path().app_data_dir().map_err(AppError::io)?;
+            let token = std::fs::read_to_string(data.join(CLAUDE_TOKEN)).ok();
+            Some(restricted_policy(
+                &s.sandbox,
+                &path,
+                &data.join("sandbox-claude"),
+                token.map(|t| t.trim().to_string()),
+            )?)
         }
         Some(other) => {
             return Err(AppError::new(
@@ -604,6 +645,7 @@ pub fn run() {
             settings_set,
             open_full_disk_access_settings,
             pty_spawn,
+            claude_token_set,
             pty_write,
             pty_resize,
             pty_kill,

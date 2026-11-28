@@ -2,7 +2,7 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { claudeTokenSet, errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
 import { dirname, hasControlChars } from "./paths.ts";
@@ -15,6 +15,7 @@ import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
 import { openSettings } from "./components/settings.ts";
+import { promptName } from "./components/prompt.ts";
 import { toast } from "./components/toast.ts";
 import * as viewer from "./viewer/index.ts";
 import * as web from "./web/index.ts";
@@ -152,6 +153,22 @@ export function mountApp(root: HTMLElement): () => void {
         const dir = activeCwd() ?? treeRoot.get();
         if (dir) term.newTab(dir, true);
         else toast("No folder yet: wait for the shell prompt, then try again.");
+      },
+    },
+    {
+      // The keychain is closed to restricted tabs, so Claude Code there signs in with this.
+      label: "Claude Code Token for Restricted Tabs…",
+      run: async () => {
+        const token = await promptName("Token from `claude setup-token` (empty: forget it)", "", (v) =>
+          /^[\x21-\x7e]{0,512}$/.test(v) ? null : "That is not a token from claude setup-token.",
+        );
+        if (token === null) return;
+        try {
+          await claudeTokenSet(token || null);
+          toast(token ? "Saved. New restricted tabs sign Claude Code in with it." : "Token forgotten.");
+        } catch (e) {
+          toast(errorMessage(e));
+        }
       },
     },
     { label: "Close Tab", run: () => term.closeTab() },

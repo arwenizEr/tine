@@ -94,9 +94,11 @@ writable = ["~/.npm"]         # replaces the default list
 deny_read = ["~/secrets"]     # added to the built-in list
 ```
 
-This protects against mistakes and careless tools, not against code written to break out. Files in the folder still run outside the sandbox the next time you use them: `package.json` scripts, a `Makefile`, hooks under a custom `core.hooksPath`.
+This protects against mistakes and careless tools, not against code written to break out. Everything you run in a restricted tab runs inside the sandbox, the folder's `package.json` scripts, `Makefile` and hooks included. Run the same files from a normal tab and they run outside it, so something a restricted tab wrote there can run unsandboxed later.
 
-**Claude Code in a restricted tab** gets its own config folder (`CLAUDE_CONFIG_DIR`, in tine's app data), because the real `~/.claude` and `~/.claude.json` hold hooks and MCP servers that run outside the sandbox. It cannot reach your keychain, so sign it in with a token: run `claude setup-token` once in a normal tab, then `export CLAUDE_CODE_OAUTH_TOKEN=…` in the restricted tab. Anything running in that tab can read the token. Claude Code's own sandbox cannot start inside this one; leave it off there.
+**Claude Code** works in a restricted tab with your own settings, plugins, skills, hooks and MCP servers, and all of them run inside the sandbox too. tine links them read-only into a separate config folder (`CLAUDE_CONFIG_DIR`), so nothing in the sandbox can change the real `~/.claude` or `~/.claude.json`. Claude's session history, project state and plugin state stay in that separate folder.
+
+The keychain stays closed, so sign Claude in once: run `claude setup-token` in a normal tab and paste the token into **Claude Code Token for Restricted Tabs…** in the command palette. Programs in a restricted tab can read that token. Claude Code's own sandbox cannot start inside this one (macOS does not nest them), and it does not need to: every command Claude runs is already sandboxed.
 
 ## Security
 
