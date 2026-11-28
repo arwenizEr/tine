@@ -26,6 +26,7 @@ Run Claude Code, Codex or any CLI agent and review its changes live, on one scre
 - **Full terminal:** tabs, split view, command blocks, clickable paths, GPU rendering.
 - **Files:** a tree that follows your shell, previews, light editing, search in files, Open in Editor (VS Code, Cursor, Zed).
 - **Web panel:** docs, a dev server or a video in place of the viewer, with bookmarks.
+- **Restricted tabs (macOS):** a shell, and everything it starts, that can write only to its own folder and cannot read your keys.
 
 No built-in AI, account or telemetry. A Rust core on the system webview, under 20 MB.
 
@@ -76,6 +77,24 @@ bookmarks = ["https://www.youtube.com/"]
 [keybindings]
 palette = "cmd+shift+p"
 ```
+
+## Restricted tabs
+
+**New Restricted Tab** (in the command palette) opens a shell under the macOS sandbox, in the active tab's folder. Every program started there inherits the sandbox:
+
+- It can write only to that folder, temp folders and `~/.npm`, never to `.git/hooks` or `.git/config`. Commits work; `git init`, `clone`, `remote add` and `push -u` do not, so run those in a normal tab.
+- It cannot read `~/.ssh`, `~/.aws`, `~/.gnupg`, keychains, browser cookies or other credential files.
+- It cannot use `open`, AppleScript, `launchctl`, the keychain or local sockets such as Docker's; `sudo` and other setuid programs do not run.
+- It refuses to start in your home folder, its parents, `~/Library` or a hidden folder in your home.
+
+```toml
+[sandbox]
+network = false               # default true
+writable = ["~/.npm"]         # replaces the default list
+deny_read = ["~/secrets"]     # added to the built-in list
+```
+
+This protects against mistakes and careless tools, not against code written to break out. Files in the folder still run outside the sandbox the next time you use them: `package.json` scripts, a `Makefile`, hooks under a custom `core.hooksPath`. Claude Code's own sandbox cannot start inside a restricted tab; turn it off there.
 
 ## Security
 

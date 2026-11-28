@@ -19,6 +19,50 @@ pub struct Settings {
     pub bookmarks: Vec<String>,
     /// Action name -> key chord such as "cmd+t" or "ctrl+shift+t".
     pub keybindings: BTreeMap<String, String>,
+    pub sandbox: Sandbox,
+}
+
+/// Restricted tabs. Paths are absolute or start with `~/`. `writable` replaces
+/// SANDBOX_WRITABLE; `deny_read` adds to SANDBOX_DENY_READ, so a setting never unhides a secret.
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Sandbox {
+    pub network: Option<bool>,
+    pub writable: Option<Vec<String>>,
+    pub deny_read: Vec<String>,
+}
+
+/// Package caches that check what they read back, so a sandbox cannot plant code in them.
+pub const SANDBOX_WRITABLE: [&str; 1] = ["~/.npm"];
+
+/// Secrets a restricted tab may not read.
+pub const SANDBOX_DENY_READ: [&str; 18] = [
+    "~/.ssh",
+    "~/.aws",
+    "~/.gnupg",
+    "~/.netrc",
+    "~/.git-credentials",
+    "~/.npmrc",
+    "~/.pypirc",
+    "~/.docker",
+    "~/.kube",
+    "~/.azure",
+    "~/.config/gh",
+    "~/.config/gcloud",
+    "~/.config/git/credentials",
+    "~/.cargo/credentials.toml",
+    "~/Library/Keychains",
+    "~/Library/Cookies",
+    "~/Library/Application Support/Google/Chrome",
+    "~/Library/Application Support/Firefox",
+];
+
+/// `~/x` to `<home>/x`; other paths unchanged.
+pub fn expand_home(path: &str, home: &Path) -> PathBuf {
+    match path.strip_prefix("~/") {
+        Some(rest) => home.join(rest),
+        None => PathBuf::from(path),
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -44,6 +88,13 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 
 # Bookmarks for the web panel (◫ Web); the panel's ☆ button adds to this list.
 # bookmarks = ["https://www.youtube.com/"]
+
+# Restricted tabs ("New Restricted Tab"): the shell may write only to its folder and these.
+# [sandbox]
+# network = true
+# writable = ["~/.npm"]
+# Unreadable on top of the built-in list (~/.ssh, ~/.aws, ~/.gnupg, keychains, cookies, ...).
+# deny_read = ["~/secrets"]
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
@@ -108,6 +159,19 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         return Err(AppError::new(
             "invalid_settings",
             format!("bookmarks must be http or https addresses, not \"{bad}\""),
+        ));
+    }
+    if let Some(bad) = settings
+        .sandbox
+        .writable
+        .iter()
+        .flatten()
+        .chain(&settings.sandbox.deny_read)
+        .find(|p| !(p.starts_with('/') || p.starts_with("~/")))
+    {
+        return Err(AppError::new(
+            "invalid_settings",
+            format!("sandbox paths must start with / or ~/, not \"{bad}\""),
         ));
     }
     if let Some(size) = settings.font_size
@@ -281,6 +345,9 @@ mod tests {
             "fontsize = 12",
             "font_size = \"big\"",
             "bookmarks = [\"file:///etc/passwd\"]",
+            "[sandbox]\nwritable = [\"relative/dir\"]",
+            "[sandbox]\ndeny_read = [\"~user/x\"]",
+            "[sandbox]\nnetwork = \"off\"",
         ] {
             std::fs::write(&path, bad).unwrap();
             let err = load(&path).unwrap_err();

@@ -2,6 +2,7 @@ mod error;
 mod fs;
 mod git;
 mod pty;
+mod sandbox;
 mod settings;
 mod watcher;
 
@@ -67,17 +68,68 @@ async fn settings_set(
     settings::set(&settings_path(&app)?, &key, value.as_ref())
 }
 
+/// The rules for a restricted tab, from the `[sandbox]` settings.
+fn restricted_policy(
+    s: &settings::Sandbox,
+    settings_file: &Path,
+) -> Result<sandbox::Policy, AppError> {
+    let home =
+        std::env::var_os("HOME").ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
+    let home = Path::new(&home);
+    fn expand<'a>(list: impl IntoIterator<Item = &'a str>, home: &Path) -> Vec<std::path::PathBuf> {
+        list.into_iter()
+            .map(|p| settings::expand_home(p, home))
+            .collect()
+    }
+    let mut writable = match &s.writable {
+        Some(list) => expand(list.iter().map(String::as_str), home),
+        None => expand(settings::SANDBOX_WRITABLE, home),
+    };
+    writable.extend([std::env::temp_dir(), "/private/tmp".into()]);
+    let mut deny_read = expand(settings::SANDBOX_DENY_READ, home);
+    deny_read.extend(expand(s.deny_read.iter().map(String::as_str), home));
+    Ok(sandbox::Policy {
+        writable,
+        deny_read,
+        // The whole settings folder: replacing the file by renaming one beside it counts too.
+        deny_write: settings_file
+            .parent()
+            .map(Path::to_path_buf)
+            .into_iter()
+            .collect(),
+        network: s.network.unwrap_or(true),
+    })
+}
+
 // Commands are async so slow disk or PTY work never stalls the main (UI) thread.
 #[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
 async fn pty_spawn(
     app: AppHandle,
     ptys: State<'_, PtyManager>,
     cwd: Option<String>,
     token: Option<String>,
+    sandbox: Option<String>,
     cols: u16,
     rows: u16,
     on_data: Channel<Response>,
 ) -> Result<u32, AppError> {
+    let policy = match sandbox.as_deref() {
+        None => None,
+        Some("restricted") => {
+            // Unlike the shell setting below, a broken settings file must not loosen the sandbox.
+            let path = settings_path(&app)?;
+            let s = settings::load(&path)
+                .map_err(|e| AppError::new("sandbox", format!("settings: {}", e.message)))?;
+            Some(restricted_policy(&s.sandbox, &path)?)
+        }
+        Some(other) => {
+            return Err(AppError::new(
+                "invalid",
+                format!("unknown sandbox \"{other}\""),
+            ));
+        }
+    };
     // A broken settings file must not stop shells from starting: fall back to $SHELL.
     let shell = settings_path(&app)
         .ok()
@@ -87,6 +139,7 @@ async fn pty_spawn(
         shell,
         cwd,
         token,
+        policy,
         cols,
         rows,
         move |bytes| {

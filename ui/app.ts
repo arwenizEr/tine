@@ -146,6 +146,14 @@ export function mountApp(root: HTMLElement): () => void {
 
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
+    {
+      label: "New Restricted Tab",
+      run: () => {
+        const dir = activeCwd() ?? treeRoot.get();
+        if (dir) term.newTab(dir, true);
+        else toast("No folder yet: wait for the shell prompt, then try again.");
+      },
+    },
     { label: "Close Tab", run: () => term.closeTab() },
     { label: "Split Terminal", run: () => term.split() },
     { label: "New File…", run: newFile },

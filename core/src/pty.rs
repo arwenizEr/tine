@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::sandbox::{self, Policy};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -67,12 +68,14 @@ impl PtyManager {
     /// Starts the user's login shell. `on_data` receives output batched to at most
     /// every 8 ms or 64 KB; `on_exit` runs once, after the last output, with the exit code.
     /// `token` goes to the shell integration, which signs its prompt marks with it.
+    /// With `sandbox`, the shell runs restricted (see `sandbox`) and `cwd` is required.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         shell: Option<String>,
         cwd: Option<String>,
         token: Option<String>,
+        sandbox: Option<Policy>,
         cols: u16,
         rows: u16,
         on_data: impl FnMut(Vec<u8>) + Send + 'static,
@@ -81,7 +84,7 @@ impl PtyManager {
         let shell = shell
             .filter(|s| !s.is_empty())
             .unwrap_or_else(default_shell);
-        self.spawn_shell(&shell, cwd, token, cols, rows, on_data, on_exit)
+        self.spawn_shell(&shell, cwd, token, sandbox, cols, rows, on_data, on_exit)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -90,16 +93,32 @@ impl PtyManager {
         shell: &str,
         cwd: Option<String>,
         token: Option<String>,
+        sandbox: Option<Policy>,
         cols: u16,
         rows: u16,
         mut on_data: impl FnMut(Vec<u8>) + Send + 'static,
         on_exit: impl FnOnce(u32, Option<i32>) + Send + 'static,
     ) -> Result<u32, AppError> {
+        let mut cmd = match sandbox {
+            None => CommandBuilder::new(shell),
+            Some(mut policy) => {
+                let home = std::env::var_os("HOME")
+                    .ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
+                // Never fall back to the home folder: that would make everything writable.
+                let dir = cwd
+                    .as_deref()
+                    .ok_or_else(|| AppError::new("sandbox", "a restricted tab needs a folder"))?;
+                policy.deny_write.extend(self.integration_dir.clone());
+                let mut c = CommandBuilder::new(sandbox::SANDBOX_EXEC);
+                c.args(sandbox::args(Path::new(dir), Path::new(&home), &policy)?);
+                c.arg(shell);
+                c
+            }
+        };
         let pair = native_pty_system()
             .openpty(size(cols, rows))
             .map_err(AppError::io)?;
 
-        let mut cmd = CommandBuilder::new(shell);
         // Always a login shell (bash emulates it in its integration script): apps started
         // from Finder get a minimal environment otherwise. Integration never edits dotfiles.
         let name = Path::new(shell)
@@ -265,6 +284,7 @@ mod tests {
                 None,
                 Some(cwd),
                 None,
+                None,
                 80,
                 24,
                 move |b| {
@@ -351,6 +371,7 @@ mod tests {
                 shell,
                 None,
                 Some("t0k3n".into()),
+                None,
                 80,
                 24,
                 move |b| {
@@ -390,6 +411,142 @@ mod tests {
     #[test]
     fn bash_integration_reports_cwd() {
         osc7_reported_by("/bin/bash");
+    }
+
+    /// Runs `script` in a restricted zsh started in `cwd` and returns its output.
+    #[cfg(target_os = "macos")]
+    fn restricted(cwd: &Path, policy: Policy, script: &str, done: &str) -> String {
+        let mgr = PtyManager::default();
+        let (tx, out) = mpsc::channel();
+        let id = mgr
+            .spawn_shell(
+                "/bin/zsh",
+                Some(cwd.to_string_lossy().into_owned()),
+                None,
+                Some(policy),
+                200,
+                24,
+                move |b| {
+                    let _ = tx.send(b);
+                },
+                |_, _| {},
+            )
+            .unwrap();
+        mgr.write(id, format!("{script}\r").as_bytes()).unwrap();
+        let text = wait_for(&out, done);
+        mgr.kill(id).unwrap();
+        text
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn restricted_shell_writes_only_where_allowed() {
+        use crate::fs::tests::TempDir;
+        let (cwd, extra, outside, secret, settings) = (
+            TempDir::new(),
+            TempDir::new(),
+            TempDir::new(),
+            TempDir::new(),
+            TempDir::new(),
+        );
+        std::fs::write(secret.path("key"), "s3cret").unwrap();
+        let git = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&cwd.0)
+            .status();
+        assert!(git.unwrap().success());
+        let home_probe = PathBuf::from(std::env::var("HOME").unwrap())
+            .join(format!("tine-sandbox-probe-{}", std::process::id()));
+        let policy = Policy {
+            writable: vec![extra.0.clone()],
+            deny_read: vec![secret.0.clone()],
+            deny_write: vec![settings.0.clone()],
+            network: false,
+        };
+        // Each probe prints <name>=<exit code>; `ok` is built with arithmetic so the echoed
+        // command line never matches.
+        let q = |p: &Path| format!("'{}'", p.display());
+        let script = [
+            format!("touch {} 2>/dev/null; echo cwd=$?", q(&cwd.path("a"))),
+            format!("touch {} 2>/dev/null; echo extra=$?", q(&extra.path("a"))),
+            format!(
+                "touch {} 2>/dev/null; echo outside=$?",
+                q(&outside.path("a"))
+            ),
+            format!("touch {} 2>/dev/null; echo home=$?", q(&home_probe)),
+            format!(
+                "touch {} 2>/dev/null; echo settings=$?",
+                q(&settings.path("a"))
+            ),
+            format!(
+                "cat {} >/dev/null 2>&1; echo secret=$?",
+                q(&secret.path("key"))
+            ),
+            "touch .git/hooks/pre-commit 2>/dev/null; echo hook=$?".into(),
+            "git config --local x.y 1 2>/dev/null; echo gitconfig=$?".into(),
+            "git -c user.name=t -c user.email=t@t commit -q --allow-empty -m t 2>/dev/null; echo commit=$?".into(),
+            "/usr/bin/open -g /nonexistent 2>/dev/null; echo open=$?".into(),
+            "/usr/bin/osascript -e 1 >/dev/null 2>&1; echo osa=$?".into(),
+            "curl -s -m 3 -o /dev/null http://1.1.1.1 2>/dev/null; echo net=$?".into(),
+        ]
+        .join("\n");
+        // A file, because a long line overflows the terminal's input buffer (1 KB on macOS).
+        std::fs::write(cwd.path("probe.sh"), script).unwrap();
+        let text = restricted(
+            &cwd.0,
+            policy,
+            "source ./probe.sh; echo ok_$((40+2))",
+            "ok_42",
+        );
+        let _ = std::fs::remove_file(&home_probe);
+        let code = |name: &str| {
+            let start = text
+                .rfind(&format!("{name}="))
+                .unwrap_or_else(|| panic!("no {name} in {text:?}"));
+            text[start + name.len() + 1..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        };
+        // zsh saves history after each command when the user's config says so; it must not fail.
+        assert!(!text.contains("locking failed"), "{text:?}");
+        assert_eq!(code("cwd"), "0");
+        assert_eq!(code("extra"), "0");
+        assert_eq!(code("commit"), "0");
+        for denied in [
+            "outside",
+            "home",
+            "settings",
+            "secret",
+            "hook",
+            "gitconfig",
+            "open",
+            "osa",
+            "net",
+        ] {
+            assert_ne!(code(denied), "0", "{denied} should be denied: {text:?}");
+        }
+    }
+
+    #[test]
+    fn restricted_shell_refuses_home_and_a_missing_folder() {
+        let mgr = PtyManager::default();
+        let home = std::env::var("HOME").unwrap();
+        for cwd in [Some(home), None] {
+            let err = mgr
+                .spawn_shell(
+                    "/bin/zsh",
+                    cwd,
+                    None,
+                    Some(Policy::default()),
+                    80,
+                    24,
+                    |_| {},
+                    |_, _| {},
+                )
+                .unwrap_err();
+            assert_eq!(err.code, "sandbox");
+        }
     }
 
     #[test]

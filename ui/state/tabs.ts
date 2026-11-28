@@ -6,7 +6,11 @@ import { signal } from "../signal.ts";
  * bell) while you were looking elsewhere, waiting when a program asked for permission.
  */
 export type Activity = "idle" | "busy" | "attention" | "waiting";
-export type Tab = { id: number; title: string; cwd: string | null; activity: Activity };
+/**
+ * `sandboxRoot`: for a restricted tab, the folder it may write to, fixed when the tab opened.
+ * Never taken from `cwd`, which the sandboxed shell can report as anything.
+ */
+export type Tab = { id: number; title: string; cwd: string | null; activity: Activity; sandboxRoot: string | null };
 
 export const tabs = signal<Tab[]>([]);
 export const activeTabId = signal<number | null>(null);
