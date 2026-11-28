@@ -1,3 +1,4 @@
+import { caio, start as startCaio } from "../caio/index.ts";
 import { commands } from "../state/commands.ts";
 import { activeTabId, splitPair, tabs } from "../state/tabs.ts";
 
@@ -53,9 +54,20 @@ export function mountTabBar(
     const web = Object.assign(document.createElement("button"), { className: "settings-button web-button", textContent: "◫ Web", title: "Show or close the web panel" });
     web.onclick = () => commands.toggleWeb();
     bar.append(add, web, gear);
+    // Only once [caio] path is set: a dot that says whether the docs server answers.
+    const docs = caio.get();
+    if (docs?.configured) {
+      const button = Object.assign(document.createElement("button"), {
+        className: "settings-button docs-button",
+        textContent: `${docs.up ? "●" : "○"} Docs`,
+        title: docs.up ? "Search the local docs (Caio)" : "Caio is not running: click to start it",
+      });
+      button.onclick = () => (docs.up ? commands.searchDocs() : void startCaio());
+      web.before(button);
+    }
   };
 
-  const unsubs = [tabs.subscribe(render), activeTabId.subscribe(render), splitPair.subscribe(render)];
+  const unsubs = [tabs.subscribe(render), activeTabId.subscribe(render), splitPair.subscribe(render), caio.subscribe(render)];
   render();
   return () => {
     unsubs.forEach((u) => u());

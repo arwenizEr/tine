@@ -113,6 +113,24 @@ This protects against mistakes and careless tools, not against code written to b
 
 The container is only as isolated as Docker's VM. Colima, for example, shares your whole home folder with its VM by default, so code that escapes the container could reach it. Limit the VM's `mounts` to your projects folder if that matters to you.
 
+## Local docs (CompactAIO)
+
+[CompactAIO](https://github.com/arwenizEr/compactaio) is a self-hosted docs server: API docs checked against each package's types, at the version your lockfile names. Point tine at your checkout (where you ran `npm run setup`):
+
+```toml
+[caio]
+path = "~/projects/compactaio"
+```
+
+- **● Docs** in the tab bar shows whether it runs; click to start it (`docker compose up -d`) or to search.
+- **Search Docs (Caio)…**: `zod: min length` searches zod at your project's version; without a prefix, everything. Results open in the viewer, each with its source and whether its example was verified.
+- **Check Symbol in Docs (Caio)…**: `zod string` says whether that export exists in your version, with its signature.
+- **Connect Caio to Agents** registers it as an MCP server with your agent CLIs (Claude Code today), in your home and in the private home of restricted tabs.
+- **Index This Project in Caio** indexes the active folder's dependencies at their lockfile versions.
+- Restricted tabs reach it even with `network = false`; nothing else on the network.
+
+tine talks to it only on `127.0.0.1`. For lockfile versions over HTTP, set `CAIO_PROJECTS_DIR` in CompactAIO's `.env` to the folder that holds your projects.
+
 ## Security
 
 tine makes no network requests of its own. Web pages cannot call into the app, and terminal output cannot fake shell events. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).

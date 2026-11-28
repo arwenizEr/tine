@@ -267,7 +267,8 @@ button {
 }
 
 /* Only the first button on the right takes the free space. */
-.web-button + .settings-button {
+.web-button + .settings-button,
+.docs-button + .web-button {
   margin-left: 0;
 }
 

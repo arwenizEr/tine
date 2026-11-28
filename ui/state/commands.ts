@@ -17,6 +17,8 @@ export const commands = {
   openSettings: (): void => {},
   /** Shows or closes the web panel under the viewer. */
   toggleWeb: (): void => {},
+  /** Asks what to look up in the local docs server (Caio) and shows the answer. */
+  searchDocs: (): void => {},
   /** Enter was pressed in a terminal: a new turn starts (for the git panel's "This turn"). */
   turnStarted: (): void => {},
 };
