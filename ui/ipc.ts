@@ -48,7 +48,7 @@ export function ptySpawn(
   onData: (bytes: Uint8Array) => void,
   token: string,
   cwd?: string,
-  sandbox?: "restricted",
+  sandbox?: "restricted" | "isolated",
 ): Promise<number> {
   const channel = new tauri.core.Channel<ArrayBuffer>();
   channel.onmessage = (bytes) => onData(new Uint8Array(bytes));

@@ -146,14 +146,14 @@ export function mountApp(root: HTMLElement): () => void {
 
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
-    {
-      label: "New Restricted Tab",
+    ...(["restricted", "isolated"] as const).map((kind) => ({
+      label: kind === "restricted" ? "New Restricted Tab" : "New Isolated Tab (Docker)",
       run: () => {
         const dir = activeCwd() ?? treeRoot.get();
-        if (dir) term.newTab(dir, true);
+        if (dir) term.newTab(dir, kind);
         else toast("No folder yet: wait for the shell prompt, then try again.");
       },
-    },
+    })),
     { label: "Close Tab", run: () => term.closeTab() },
     { label: "Split Terminal", run: () => term.split() },
     { label: "New File…", run: newFile },
