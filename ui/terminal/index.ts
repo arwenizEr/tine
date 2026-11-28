@@ -7,11 +7,11 @@ import { SearchAddon } from "@xterm/addon-search";
 import { closeWindow, fsStat, notify, onFileDrop, onPtyExit, openUrl, ptyKill, ptyResize, ptySpawn, ptyWrite } from "../ipc.ts";
 import { toast } from "../components/toast.ts";
 import { notification } from "./marks.ts";
-import { findPathLinks, parseOsc7, PATH_MIME, resolve, shellQuote } from "../paths.ts";
+import { findPathLinks, parseOsc7, PATH_MIME, rebase, resolve, shellQuote } from "../paths.ts";
 import { commands } from "../state/commands.ts";
 import { openDoc, selected } from "../state/files.ts";
 import { settings } from "../state/settings.ts";
-import { activeCwd, activeTabId, type Activity, setTabActivity, splitPair, setTabCwd, setTabTitle, tabs } from "../state/tabs.ts";
+import { activeCwd, activeTabId, type Activity, type SandboxKind, setTabActivity, splitPair, setTabCwd, setTabTitle, type TabSandbox, tabs } from "../state/tabs.ts";
 import { Blocks } from "./blocks.ts";
 import { mountSearch } from "./search.ts";
 import { mountTabBar } from "./tabbar.ts";
@@ -29,6 +29,7 @@ type Session = {
 /** Output this soon after a keystroke is its echo, not the program working on its own. */
 const ECHO_MS = 250;
 const UNSAFE_NAME = "Not typed into the terminal: the name contains a line break or other control character.";
+const OUTSIDE = "Not typed into the terminal: an isolated tab sees only its own folder.";
 /** Notification text that means "blocked on you", e.g. Claude Code's "needs your permission". */
 const WAITING = /permission|approv|confirm|allow/i;
 /** A tab is quiet after this long without output. */
@@ -51,8 +52,8 @@ function themeFromCss(): ITheme {
 
 /** Terminal panel actions, called by app-level shortcuts. */
 export type TerminalActions = {
-  /** With `restricted`, the shell may write only to `cwd` (see core/src/sandbox.rs). */
-  newTab(cwd?: string, restricted?: boolean): void;
+  /** With `sandbox`, the shell is restricted to, or isolated with, `cwd` (see core/src/sandbox.rs). */
+  newTab(cwd?: string, sandbox?: SandboxKind): void;
   closeTab(): void;
   selectTab(index: number): void;
   clear(): void;
@@ -174,7 +175,8 @@ export function mount(root: HTMLElement): TerminalActions {
     },
   });
 
-  const create = async (cwd?: string, beside?: number, restricted = false) => {
+  const create = async (cwd?: string, beside?: number, kind?: SandboxKind) => {
+    const sandbox: TabSandbox | null = kind && cwd ? { kind, root: cwd } : null;
     const id = ++nextId;
     const el = document.createElement("div");
     el.className = "terminal";
@@ -217,7 +219,7 @@ export function mount(root: HTMLElement): TerminalActions {
 
     const session: Session = { id, term, fit, search: searchAddon, blocks: new Blocks(term, token), el, ptyId: null };
     sessions.set(id, session);
-    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle", sandboxRoot: restricted ? (cwd ?? null) : null }]);
+    tabs.set([...tabs.get(), { id, title: "shell", cwd: cwd ?? null, activity: "idle", sandbox }]);
 
     // Activity marks: busy while the program prints on its own, attention when a long run ends unseen.
     let lastInput = 0;
@@ -261,7 +263,9 @@ export function mount(root: HTMLElement): TerminalActions {
     activate(id);
     term.onTitleChange((title) => setTabTitle(id, title || "shell"));
     term.parser.registerOscHandler(7, (data) => {
-      const dir = parseOsc7(data);
+      const reported = parseOsc7(data);
+      // An isolated shell reports container paths; outside /work there is no host folder.
+      const dir = reported && sandbox?.kind === "isolated" ? rebase(reported, "/work", sandbox.root) : reported;
       if (dir) setTabCwd(id, dir);
       return true;
     });
@@ -274,9 +278,9 @@ export function mount(root: HTMLElement): TerminalActions {
     };
     try {
       // A restored folder may be gone by now: start in the home folder instead. Never for a
-      // restricted tab, where the home folder would make everything writable.
-      ptyId = await ptySpawn(term.cols, term.rows, onBytes, token, cwd, restricted ? "restricted" : undefined).catch((e) => {
-        if (!cwd || restricted) throw e;
+      // sandboxed tab, where the home folder would expose everything.
+      ptyId = await ptySpawn(term.cols, term.rows, onBytes, token, cwd, kind).catch((e) => {
+        if (!cwd || kind) throw e;
         return ptySpawn(term.cols, term.rows, onBytes, token);
       });
     } catch (e) {
@@ -312,11 +316,19 @@ export function mount(root: HTMLElement): TerminalActions {
     }
   });
 
+  /** `path` as the tab's shell sees it (an isolated tab sees its folder as /work), or null. */
+  const shellPath = (s: Session, path: string): string | null => {
+    const sb = tabs.get().find((t) => t.id === s.id)?.sandbox;
+    return sb?.kind === "isolated" ? rebase(path, sb.root, "/work") : path;
+  };
+
   // A file dropped on the terminal types its quoted path, as in iTerm2; agents pick up images this way.
   const dropListener = onFileDrop((paths, x, y) => {
     const s = active();
     if (s && host.contains(document.elementFromPoint(x, y))) {
-      const quoted = paths.map(shellQuote);
+      const inShell = paths.map((p) => shellPath(s, p));
+      if (inShell.includes(null)) return toast(OUTSIDE);
+      const quoted = (inShell as string[]).map(shellQuote);
       if (quoted.includes(null)) return toast(UNSAFE_NAME);
       s.term.paste(quoted.join(" ") + " ");
       s.term.focus();
@@ -341,7 +353,9 @@ export function mount(root: HTMLElement): TerminalActions {
       if (!path || !s) return;
       e.preventDefault();
       e.stopPropagation();
-      const quoted = shellQuote(path);
+      const inShell = shellPath(s, path);
+      if (inShell === null) return toast(OUTSIDE);
+      const quoted = shellQuote(inShell);
       if (quoted === null) return toast(UNSAFE_NAME);
       s.term.paste(quoted + " ");
       s.term.focus();
@@ -361,9 +375,12 @@ export function mount(root: HTMLElement): TerminalActions {
 
   commands.cdInTerminal = (dir) => {
     const s = active();
-    const quoted = shellQuote(dir);
+    if (!s) return "No terminal";
+    const inShell = shellPath(s, dir);
+    if (inShell === null) return OUTSIDE;
+    const quoted = shellQuote(inShell);
     if (quoted === null) return UNSAFE_NAME;
-    return s ? runCommand(s, ` cd -- ${quoted}`) : "No terminal";
+    return runCommand(s, ` cd -- ${quoted}`);
   };
 
   // Coming back to the window counts as looking at the active tab.
@@ -378,14 +395,14 @@ export function mount(root: HTMLElement): TerminalActions {
 
   // Restore tabs: the same folders as last time (the programs that ran there are not restarted).
   const SAVED = "tabs";
-  // `roots[i]` set: tab i was restricted and reopens restricted to that folder.
-  type Saved = { cwds: (string | null)[]; active: number; roots?: (string | null)[] };
+  // `sandboxes[i]` set: tab i reopens sandboxed the same way, to the same folder.
+  type Saved = { cwds: (string | null)[]; active: number; sandboxes?: (TabSandbox | null)[] };
   const save = () => {
     const list = tabs.get();
     const saved: Saved = {
       cwds: list.map((t) => t.cwd),
       active: list.findIndex((t) => t.id === activeTabId.get()),
-      roots: list.map((t) => t.sandboxRoot),
+      sandboxes: list.map((t) => t.sandbox),
     };
     try {
       localStorage.setItem(SAVED, JSON.stringify(saved));
@@ -403,8 +420,8 @@ export function mount(root: HTMLElement): TerminalActions {
   const unsubSave: (() => void)[] = [];
   void Promise.all(
     restore.cwds.map((cwd, i) => {
-      const root = saved?.roots?.[i];
-      return root ? create(root, undefined, true) : create(cwd ?? undefined);
+      const sb = saved?.sandboxes?.[i];
+      return sb ? create(sb.root, undefined, sb.kind) : create(cwd ?? undefined);
     }),
   ).then(() => {
     const tab = tabs.get()[restore.active];
@@ -414,7 +431,7 @@ export function mount(root: HTMLElement): TerminalActions {
 
   return {
     host,
-    newTab: (cwd, restricted) => void create(cwd, undefined, restricted),
+    newTab: (cwd, sandbox) => void create(cwd, undefined, sandbox),
     closeTab: () => {
       const s = active();
       if (s) close(s.id);
@@ -442,8 +459,8 @@ export function mount(root: HTMLElement): TerminalActions {
         active()?.term.focus();
       } else if (id !== null) {
         // The new half keeps the active tab's restriction and its folder.
-        const root = tabs.get().find((t) => t.id === id)?.sandboxRoot;
-        void (root ? create(root, id, true) : create(activeCwd() ?? undefined, id));
+        const sb = tabs.get().find((t) => t.id === id)?.sandbox;
+        void (sb ? create(sb.root, id, sb.kind) : create(activeCwd() ?? undefined, id));
       }
     },
     block: (direction) => active()?.blocks.jump(direction),

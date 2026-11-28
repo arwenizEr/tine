@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ancestors, dirname, findPathLinks, hasControlChars, isInside, join, lineRef, normalize, parseOsc7, resolve, shellQuote } from "./paths.ts";
+import { ancestors, dirname, findPathLinks, hasControlChars, isInside, join, lineRef, normalize, parseOsc7, rebase, resolve, shellQuote } from "./paths.ts";
+
+test("rebase maps container paths to the host and refuses the rest", () => {
+  assert.equal(rebase("/work", "/work", "/Users/me/p"), "/Users/me/p");
+  assert.equal(rebase("/work/src/a.ts", "/work", "/Users/me/p"), "/Users/me/p/src/a.ts");
+  assert.equal(rebase("/Users/me/p/src", "/Users/me/p", "/work"), "/work/src");
+  assert.equal(rebase("/workshop", "/work", "/Users/me/p"), null);
+  assert.equal(rebase("/root", "/work", "/Users/me/p"), null);
+  assert.equal(rebase("/work/../etc", "/work", "/Users/me/p"), null);
+});
 
 test("dirname, join, normalize, resolve", () => {
   assert.equal(dirname("/a/b/c.txt"), "/a/b");

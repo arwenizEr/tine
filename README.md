@@ -27,6 +27,7 @@ Run Claude Code, Codex or any CLI agent and review its changes live, on one scre
 - **Files:** a tree that follows your shell, previews, light editing, search in files, Open in Editor (VS Code, Cursor, Zed).
 - **Web panel:** docs, a dev server or a video in place of the viewer, with bookmarks.
 - **Restricted tabs (macOS):** a shell, and everything it starts, that can write only to its own folder and cannot read your keys.
+- **Isolated tabs:** a root shell in a throwaway Docker container that sees only its folder.
 
 No built-in AI, account or telemetry. A Rust core on the system webview, under 20 MB.
 
@@ -97,6 +98,18 @@ deny_read = ["~/secrets"]     # added to the built-in list
 This protects against mistakes and careless tools, not against code written to break out. Files in the folder still run outside the sandbox the next time you use them: `package.json` scripts, a `Makefile`, hooks under a custom `core.hooksPath`.
 
 **Claude Code in a restricted tab** gets its own config folder (`CLAUDE_CONFIG_DIR`, in tine's app data), because the real `~/.claude` and `~/.claude.json` hold hooks and MCP servers that run outside the sandbox. It cannot reach your keychain, so sign it in with a token: run `claude setup-token` once in a normal tab, then `export CLAUDE_CODE_OAUTH_TOKEN=…` in the restricted tab. Anything running in that tab can read the token. Claude Code's own sandbox cannot start inside this one; leave it off there.
+
+## Isolated tabs
+
+**New Isolated Tab (Docker)** runs `bash` as root in a new container (`debian:stable-slim` by default) that sees only the active tab's folder, at `/work`. Use it for code you do not trust: install anything, run anything. It needs a running Docker: Colima, OrbStack or Docker Desktop.
+
+- No environment variables from your Mac reach the container, so no API keys or tokens either.
+- `.git/hooks` and `.git/config` of the folder are read-only inside.
+- `network = false` under `[sandbox]` cuts the network; `image = "..."` picks another image with bash.
+- Closing the tab removes the container. Containers left by a crashed tine are removed when tine starts.
+- What you install is gone when the tab closes.
+
+The container is only as isolated as Docker's VM. Colima, for example, shares your whole home folder with its VM by default, so code that escapes the container could reach it. Limit the VM's `mounts` to your projects folder if that matters to you.
 
 ## Security
 

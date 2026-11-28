@@ -28,9 +28,13 @@ pub struct Settings {
 #[serde(default, deny_unknown_fields)]
 pub struct Sandbox {
     pub network: Option<bool>,
+    /// Image for isolated tabs; it needs bash.
+    pub image: Option<String>,
     pub writable: Option<Vec<String>>,
     pub deny_read: Vec<String>,
 }
+
+pub const SANDBOX_IMAGE: &str = "debian:stable-slim";
 
 /// Package caches that check what they read back, so a sandbox cannot plant code in them.
 pub const SANDBOX_WRITABLE: [&str; 1] = ["~/.npm"];
@@ -89,9 +93,11 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # Bookmarks for the web panel (◫ Web); the panel's ☆ button adds to this list.
 # bookmarks = ["https://www.youtube.com/"]
 
-# Restricted tabs ("New Restricted Tab"): the shell may write only to its folder and these.
+# Sandboxed tabs. Restricted: the shell may write only to its folder and these paths.
+# Isolated: the shell runs as root in a Docker container that sees only its folder.
 # [sandbox]
 # network = true
+# image = "debian:stable-slim"   # isolated tabs; needs bash
 # writable = ["~/.npm"]
 # Unreadable on top of the built-in list (~/.ssh, ~/.aws, ~/.gnupg, keychains, cookies, ...).
 # deny_read = ["~/secrets"]
@@ -172,6 +178,14 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         return Err(AppError::new(
             "invalid_settings",
             format!("sandbox paths must start with / or ~/, not \"{bad}\""),
+        ));
+    }
+    if let Some(image) = &settings.sandbox.image
+        && (image.is_empty() || image.starts_with('-') || image.contains(char::is_whitespace))
+    {
+        return Err(AppError::new(
+            "invalid_settings",
+            format!("sandbox.image must be an image name, not \"{image}\""),
         ));
     }
     if let Some(size) = settings.font_size
@@ -348,6 +362,7 @@ mod tests {
             "[sandbox]\nwritable = [\"relative/dir\"]",
             "[sandbox]\ndeny_read = [\"~user/x\"]",
             "[sandbox]\nnetwork = \"off\"",
+            "[sandbox]\nimage = \"--privileged\"",
         ] {
             std::fs::write(&path, bad).unwrap();
             let err = load(&path).unwrap_err();

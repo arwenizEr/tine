@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::sandbox::{self, Policy};
+use crate::sandbox::{self, Sandbox};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -17,6 +17,8 @@ struct Session {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    /// Docker CLI and container name of an isolated tab.
+    container: Option<(PathBuf, String)>,
 }
 
 type Sessions = Arc<Mutex<HashMap<u32, Arc<Session>>>>;
@@ -68,14 +70,14 @@ impl PtyManager {
     /// Starts the user's login shell. `on_data` receives output batched to at most
     /// every 8 ms or 64 KB; `on_exit` runs once, after the last output, with the exit code.
     /// `token` goes to the shell integration, which signs its prompt marks with it.
-    /// With `sandbox`, the shell runs restricted (see `sandbox`) and `cwd` is required.
+    /// With `sandbox`, the shell runs restricted or isolated (see `sandbox`) and `cwd` is required.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         shell: Option<String>,
         cwd: Option<String>,
         token: Option<String>,
-        sandbox: Option<Policy>,
+        sandbox: Option<Sandbox>,
         cols: u16,
         rows: u16,
         on_data: impl FnMut(Vec<u8>) + Send + 'static,
@@ -93,21 +95,45 @@ impl PtyManager {
         shell: &str,
         cwd: Option<String>,
         token: Option<String>,
-        sandbox: Option<Policy>,
+        sandbox: Option<Sandbox>,
         cols: u16,
         rows: u16,
         mut on_data: impl FnMut(Vec<u8>) + Send + 'static,
         on_exit: impl FnOnce(u32, Option<i32>) + Send + 'static,
     ) -> Result<u32, AppError> {
+        // Never fall back to the home folder for a sandboxed tab: that would expose everything.
+        let sandboxed = || {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
+            let dir = cwd
+                .as_deref()
+                .ok_or_else(|| AppError::new("sandbox", "a sandboxed tab needs a folder"))?;
+            Ok::<_, AppError>((home, dir))
+        };
+        let mut container = None;
         let mut cmd = match sandbox {
             None => CommandBuilder::new(shell),
-            Some(mut policy) => {
-                let home = std::env::var_os("HOME")
-                    .ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
-                // Never fall back to the home folder: that would make everything writable.
-                let dir = cwd
-                    .as_deref()
-                    .ok_or_else(|| AppError::new("sandbox", "a restricted tab needs a folder"))?;
+            Some(Sandbox::Isolated(iso)) => {
+                let (home, dir) = sandboxed()?;
+                let docker = sandbox::docker().ok_or_else(|| {
+                    AppError::new(
+                        "sandbox",
+                        "an isolated tab needs Docker (Colima, OrbStack or Docker Desktop)",
+                    )
+                })?;
+                let (args, name) = sandbox::isolated_args(
+                    Path::new(dir),
+                    Path::new(&home),
+                    self.integration_dir.as_deref(),
+                    &iso,
+                )?;
+                let mut c = CommandBuilder::new(&docker);
+                c.args(args);
+                container = Some((docker, name));
+                c
+            }
+            Some(Sandbox::Restricted(mut policy)) => {
+                let (home, dir) = sandboxed()?;
                 policy.deny_write.extend(self.integration_dir.clone());
                 let mut c = CommandBuilder::new(sandbox::SANDBOX_EXEC);
                 c.args(sandbox::args(Path::new(dir), Path::new(&home), &policy)?);
@@ -128,7 +154,12 @@ impl PtyManager {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("");
-        match (&self.integration_dir, name) {
+        // An isolated tab's shell is the container's bash, set up in `isolated_args`.
+        let integration = self
+            .integration_dir
+            .as_ref()
+            .filter(|_| container.is_none());
+        match (integration, name) {
             (Some(dir), "zsh") => {
                 cmd.arg("-l");
                 match std::env::var_os("ZDOTDIR") {
@@ -142,6 +173,7 @@ impl PtyManager {
                 cmd.arg(dir.join("integration.bash"));
                 cmd.arg("-i");
             }
+            _ if container.is_some() => {}
             _ => cmd.arg("-l"),
         }
         if let Some(dir) = cwd.or_else(|| std::env::var("HOME").ok()) {
@@ -185,6 +217,7 @@ impl PtyManager {
             killer: Mutex::new(child.clone_killer()),
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
+            container,
         };
         self.sessions.lock().unwrap().insert(id, Arc::new(session));
 
@@ -252,6 +285,12 @@ impl PtyManager {
             .unwrap()
             .remove(&id)
             .ok_or_else(|| AppError::new("not_found", format!("no pty {id}")))?;
+        if let Some((docker, name)) = &session.container {
+            sandbox::remove(docker, name);
+            // Removing the container ends the docker CLI too, so it may be gone already.
+            let _ = session.killer.lock().unwrap().kill();
+            return Ok(());
+        }
         // Dropping the session afterwards closes the master, which hangs up the foreground job too.
         session.killer.lock().unwrap().kill()?;
         Ok(())
@@ -418,7 +457,7 @@ mod tests {
 
     /// Runs `script` in a restricted zsh started in `cwd` and returns its output.
     #[cfg(target_os = "macos")]
-    fn restricted(cwd: &Path, policy: Policy, script: &str, done: &str) -> String {
+    fn restricted(cwd: &Path, policy: sandbox::Policy, script: &str, done: &str) -> String {
         let mgr = PtyManager::default();
         let (tx, out) = mpsc::channel();
         let id = mgr
@@ -426,7 +465,7 @@ mod tests {
                 "/bin/zsh",
                 Some(cwd.to_string_lossy().into_owned()),
                 None,
-                Some(policy),
+                Some(Sandbox::Restricted(policy)),
                 200,
                 24,
                 move |b| {
@@ -460,7 +499,7 @@ mod tests {
         assert!(git.unwrap().success());
         let home_probe = PathBuf::from(std::env::var("HOME").unwrap())
             .join(format!("tine-sandbox-probe-{}", std::process::id()));
-        let policy = Policy {
+        let policy = sandbox::Policy {
             writable: vec![extra.0.clone()],
             deny_read: vec![secret.0.clone()],
             deny_write: vec![settings.0.clone()],
@@ -544,7 +583,7 @@ mod tests {
                     "/bin/zsh",
                     cwd,
                     None,
-                    Some(Policy::default()),
+                    Some(Sandbox::Restricted(sandbox::Policy::default())),
                     80,
                     24,
                     |_| {},
@@ -553,6 +592,107 @@ mod tests {
                 .unwrap_err();
             assert_eq!(err.code, "sandbox");
         }
+    }
+
+    /// Needs a running Docker; skipped otherwise. The folder is under target/ because Docker
+    /// VMs such as Colima share the home folder, not the system temp folder.
+    #[test]
+    fn isolated_shell_sees_only_its_folder_and_is_removed_on_kill() {
+        let Some(docker) = sandbox::docker().filter(|d| {
+            std::process::Command::new(d)
+                .args(["info"])
+                .output()
+                .is_ok_and(|o| o.status.success())
+        }) else {
+            eprintln!("skipping: Docker is not running");
+            return;
+        };
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("isolated-test-{}", std::process::id()));
+        std::fs::create_dir_all(cwd.join(".git/hooks")).unwrap();
+        let integration_dir = cwd.join("integration");
+        install_shell_integration(&integration_dir).unwrap();
+        let mgr = PtyManager::new(Some(integration_dir));
+        let (tx, out) = mpsc::channel();
+        let iso = sandbox::Isolated {
+            image: crate::settings::SANDBOX_IMAGE.into(),
+            network: false,
+        };
+        let id = mgr
+            .spawn_shell(
+                "/bin/zsh",
+                Some(cwd.to_string_lossy().into_owned()),
+                Some("t0k3n".into()),
+                Some(Sandbox::Isolated(iso)),
+                200,
+                24,
+                move |b| {
+                    let _ = tx.send(b);
+                },
+                |_, _| {},
+            )
+            .unwrap();
+        std::fs::write(
+            cwd.join("probe.sh"),
+            [
+                "touch /work/made-inside; echo work=$?",
+                "ls /Users >/dev/null 2>&1; echo users=$?",
+                "touch .git/hooks/pre-commit 2>/dev/null; echo hook=$?",
+                "(echo > /dev/tcp/1.1.1.1/80) 2>/dev/null; echo net=$?",
+                // cargo sets CARGO for tests; the container must not inherit it.
+                "[ -z \"${CARGO+x}\" ]; echo env=$?",
+                "[ -z \"${TINE_TOKEN+x}\" ]; echo token=$?",
+                "[ \"$(id -u)\" = 0 ]; echo root=$?",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        // Cold image pulls are slow: wait for the first prompt, which reports /work via OSC 7.
+        wait_for(&out, "/work\x1b\\");
+        mgr.write(id, b"source ./probe.sh; echo ok_$((40+2))\r")
+            .unwrap();
+        let text = wait_for(&out, "ok_42");
+        let code = |name: &str| {
+            let start = text
+                .rfind(&format!("{name}="))
+                .unwrap_or_else(|| panic!("no {name} in {text:?}"));
+            text[start + name.len() + 1..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        };
+        for zero in ["work", "env", "token", "root"] {
+            assert_eq!(code(zero), "0", "{zero}: {text:?}");
+        }
+        for denied in ["users", "hook", "net"] {
+            assert_ne!(code(denied), "0", "{denied} should be denied: {text:?}");
+        }
+        assert!(cwd.join("made-inside").exists());
+
+        let name = mgr.get(id).unwrap().container.clone().unwrap().1;
+        mgr.kill(id).unwrap();
+        let left = std::process::Command::new(&docker)
+            .args(["ps", "-aq", "--filter", &format!("name=^{name}$")])
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&cwd);
+        assert!(left.stdout.is_empty(), "container {name} still exists");
+
+        // A container whose tine is gone (pid 999999 is above macOS's limit) is swept.
+        let orphan = std::process::Command::new(&docker)
+            .args(["run", "-d", "--label", "tine.owner=999999"])
+            .args([crate::settings::SANDBOX_IMAGE, "sleep", "60"])
+            .output()
+            .unwrap();
+        let id = String::from_utf8_lossy(&orphan.stdout).trim().to_string();
+        assert!(!id.is_empty(), "{orphan:?}");
+        sandbox::sweep(&docker);
+        let left = std::process::Command::new(&docker)
+            .args(["ps", "-aq", "--no-trunc", "--filter", &format!("id={id}")])
+            .output()
+            .unwrap();
+        assert!(left.stdout.is_empty(), "orphan {id} was not swept");
     }
 
     #[test]

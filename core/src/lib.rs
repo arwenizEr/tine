@@ -139,7 +139,20 @@ async fn pty_spawn(
                 .app_data_dir()
                 .map_err(AppError::io)?
                 .join("sandbox-claude");
-            Some(restricted_policy(&s.sandbox, &path, &claude)?)
+            Some(sandbox::Sandbox::Restricted(restricted_policy(
+                &s.sandbox, &path, &claude,
+            )?))
+        }
+        Some("isolated") => {
+            let s = settings::load(&settings_path(&app)?)
+                .map_err(|e| AppError::new("sandbox", format!("settings: {}", e.message)))?;
+            Some(sandbox::Sandbox::Isolated(sandbox::Isolated {
+                image: s
+                    .sandbox
+                    .image
+                    .unwrap_or_else(|| settings::SANDBOX_IMAGE.into()),
+                network: s.sandbox.network.unwrap_or(true),
+            }))
         }
         Some(other) => {
             return Err(AppError::new(
@@ -571,6 +584,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // Off the main thread: with the Docker VM stopped, the docker CLI may be slow to fail.
+            if let Some(docker) = sandbox::docker() {
+                std::thread::spawn(move || sandbox::sweep(&docker));
+            }
             let dir = app.path().app_cache_dir()?.join("shell-integration");
             // Without the scripts the shells still start, just without OSC 7.
             let integration = pty::install_shell_integration(&dir)

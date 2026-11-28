@@ -20,8 +20,10 @@ export function mountTabBar(
         el.title = tab.title;
         const label = document.createElement("span");
         label.className = "tab-title";
-        label.textContent = tab.sandboxRoot ? `🔒 ${tab.title}` : tab.title;
-        if (tab.sandboxRoot) el.title = `${tab.title}\nRestricted: writes only to ${tab.sandboxRoot}`;
+        const sb = tab.sandbox;
+        label.textContent = sb ? `${sb.kind === "restricted" ? "🔒" : "📦"} ${tab.title}` : tab.title;
+        if (sb?.kind === "restricted") el.title = `${tab.title}\nRestricted: writes only to ${sb.root}`;
+        if (sb?.kind === "isolated") el.title = `${tab.title}\nIsolated container: sees only ${sb.root}, as /work`;
         const activity = document.createElement("span");
         activity.className = `tab-activity ${tab.activity}`;
         if (tab.activity !== "idle") {

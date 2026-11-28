@@ -7,10 +7,13 @@ import { signal } from "../signal.ts";
  */
 export type Activity = "idle" | "busy" | "attention" | "waiting";
 /**
- * `sandboxRoot`: for a restricted tab, the folder it may write to, fixed when the tab opened.
- * Never taken from `cwd`, which the sandboxed shell can report as anything.
+ * `sandbox`: a restricted or isolated tab (see core/src/sandbox.rs) and the folder it may
+ * write to, fixed when the tab opened. Never taken from `cwd`, which the sandboxed shell
+ * can report as anything. An isolated tab sees that folder as /work.
  */
-export type Tab = { id: number; title: string; cwd: string | null; activity: Activity; sandboxRoot: string | null };
+export type SandboxKind = "restricted" | "isolated";
+export type TabSandbox = { kind: SandboxKind; root: string };
+export type Tab = { id: number; title: string; cwd: string | null; activity: Activity; sandbox: TabSandbox | null };
 
 export const tabs = signal<Tab[]>([]);
 export const activeTabId = signal<number | null>(null);
