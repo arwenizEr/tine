@@ -133,6 +133,7 @@ path = "~/projects/compactaio"
 - **Connect Caio to Agents** registers it as an MCP server with your agent CLIs (Claude Code today), in your home and in the private home of restricted tabs.
 - **Index This Project in Caio** indexes the active folder's dependencies at their lockfile versions.
 - Restricted tabs reach it even with `network = false`; nothing else on the network.
+- Isolated tabs reach it as `http://caio:3920/mcp`, given to them as `CAIO_MCP_URL` with `CAIO_HTTP_TOKEN`, on an internal Docker network that holds only Caio's server (not its database). With `network = false` that is all they reach. To use it from an agent installed in the container: `claude mcp add --transport http caio "$CAIO_MCP_URL" --header "Authorization: Bearer $CAIO_HTTP_TOKEN"`.
 
 tine talks to it only on `127.0.0.1`. For lockfile versions over HTTP, set `CAIO_PROJECTS_DIR` in CompactAIO's `.env` to the folder that holds your projects.
 

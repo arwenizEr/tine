@@ -356,6 +356,12 @@ async fn pty_spawn(
                     .unwrap_or_else(|| settings::SANDBOX_IMAGE.into()),
                 network: s.sandbox.network.unwrap_or(true),
                 keep: s.sandbox.keep.unwrap_or(false),
+                // Best effort: without Caio running the tab still opens, just without it.
+                caio: caio(&app).ok().and_then(|c| {
+                    let docker = sandbox::docker()?;
+                    c.share_with_containers(&docker).ok()?;
+                    Some(c.token().to_string())
+                }),
             }))
         }
         Some(other) => {

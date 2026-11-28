@@ -137,6 +137,10 @@ impl PtyManager {
                 )?;
                 let mut c = CommandBuilder::new(&docker);
                 c.args(args);
+                // Passed by name in `isolated_args`, so the value never shows on a command line.
+                if let Some(token) = &iso.caio {
+                    c.env("CAIO_HTTP_TOKEN", token);
+                }
                 container = Some(sandbox::Container {
                     docker,
                     name,
@@ -667,6 +671,7 @@ mod tests {
             image: crate::settings::SANDBOX_IMAGE.into(),
             network: false,
             keep: false,
+            caio: None,
         };
         let id = mgr
             .spawn_shell(
@@ -769,6 +774,7 @@ mod tests {
                 image: crate::settings::SANDBOX_IMAGE.into(),
                 network: false,
                 keep: true,
+                caio: None,
             };
             let id = mgr
                 .spawn_shell(
@@ -822,6 +828,83 @@ mod tests {
             !sandbox::image_exists(&docker, &image),
             "forget leaves {image}"
         );
+    }
+
+    /// An isolated tab reaches Caio, and only Caio, with its network off; with it on, the
+    /// internet too. Needs Docker and TINE_TEST_CAIO (a running CompactAIO checkout).
+    #[test]
+    fn isolated_tab_reaches_caio_but_not_its_database() {
+        let (Some(dir), Some(docker)) = (std::env::var_os("TINE_TEST_CAIO"), sandbox::docker())
+        else {
+            eprintln!("skipping: TINE_TEST_CAIO is not set");
+            return;
+        };
+        let caio = crate::caio::Caio::load(Path::new(&dir)).unwrap();
+        caio.share_with_containers(&docker).unwrap();
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("caio-net-test-{}", std::process::id()));
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::write(
+            cwd.join("probe.sh"),
+            [
+                "body='{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'",
+                "exec 3<>/dev/tcp/caio/3920",
+                "printf 'POST /mcp HTTP/1.0\\r\\nHost: caio:3920\\r\\nAuthorization: Bearer %s\\r\\nContent-Type: application/json\\r\\nAccept: application/json, text/event-stream\\r\\nContent-Length: %s\\r\\n\\r\\n%s' \"$CAIO_HTTP_TOKEN\" \"${#body}\" \"$body\" >&3",
+                "grep -q search_docs <&3; echo caio=$?",
+                "[ \"$CAIO_MCP_URL\" = http://caio:3920/mcp ]; echo url=$?",
+                "(echo > /dev/tcp/db/5432) 2>/dev/null; echo db=$?",
+                "(echo > /dev/tcp/1.1.1.1/80) 2>/dev/null; echo net=$?",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let mgr = PtyManager::default();
+        for network in [false, true] {
+            let (tx, out) = mpsc::channel();
+            let iso = sandbox::Isolated {
+                image: crate::settings::SANDBOX_IMAGE.into(),
+                network,
+                keep: false,
+                caio: Some(caio.token().to_string()),
+            };
+            let id = mgr
+                .spawn_shell(
+                    "/bin/zsh",
+                    Some(cwd.to_string_lossy().into_owned()),
+                    None,
+                    Some(Sandbox::Isolated(iso)),
+                    200,
+                    24,
+                    move |b| {
+                        let _ = tx.send(b);
+                    },
+                    |_, _| {},
+                )
+                .unwrap();
+            mgr.write(id, b"source ./probe.sh; echo ok_$((40+2))\r")
+                .unwrap();
+            let text = wait_for(&out, "ok_42");
+            mgr.kill(id).unwrap();
+            let code = |name: &str| {
+                let start = text
+                    .rfind(&format!("{name}="))
+                    .unwrap_or_else(|| panic!("no {name} in {text:?}"));
+                text[start + name.len() + 1..]
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+            };
+            assert_eq!(code("caio"), "0", "network={network}: {text:?}");
+            assert_eq!(code("url"), "0");
+            assert_ne!(code("db"), "0", "Caio's database must stay out of reach");
+            assert_eq!(
+                code("net") == "0",
+                network,
+                "internet only with the network on: {text:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&cwd);
     }
 
     #[test]

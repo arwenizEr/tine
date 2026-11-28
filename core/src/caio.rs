@@ -115,6 +115,60 @@ impl Caio {
     }
 }
 
+/// The Docker network isolated tabs reach Caio on. Internal: nothing else is on it, so a tab
+/// gets Caio but neither the internet (when its network is off) nor Caio's database.
+pub const NETWORK: &str = "tine-caio";
+/// The internet for isolated tabs that also reach Caio: Docker cannot join its default
+/// bridge and another network, so this ordinary user-defined one stands in for it.
+pub const OUT_NETWORK: &str = "tine-out";
+/// Caio's address on that network, which its docker-compose.yml allows as a Host.
+pub const CONTAINER_URL: &str = "http://caio:3920/mcp";
+
+impl Caio {
+    /// Attaches Caio's server container to `NETWORK` as "caio", creating the network if
+    /// needed. Done for each isolated tab, since recreating the container drops it.
+    pub fn share_with_containers(&self, docker: &Path) -> Result<(), AppError> {
+        let run = |args: &[&str], dir: Option<&Path>| {
+            let mut c = Command::new(docker);
+            c.args(args).stdin(Stdio::null());
+            if let Some(dir) = dir {
+                c.current_dir(dir);
+            }
+            c.output()
+        };
+        let ps = run(&["compose", "ps", "-q", "server"], Some(&self.dir))?;
+        let id = String::from_utf8_lossy(&ps.stdout).trim().to_string();
+        if id.is_empty() {
+            return Err(AppError::new(
+                "caio",
+                "Caio's server container is not running",
+            ));
+        }
+        let quiet = |out: std::process::Output, ok: &str| {
+            let err = String::from_utf8_lossy(&out.stderr);
+            match out.status.success() || err.contains(ok) {
+                true => Ok(()),
+                false => Err(AppError::new("caio", err.trim().to_string())),
+            }
+        };
+        quiet(
+            run(&["network", "create", "--internal", NETWORK], None)?,
+            "already exists",
+        )?;
+        quiet(
+            run(&["network", "create", OUT_NETWORK], None)?,
+            "already exists",
+        )?;
+        quiet(
+            run(
+                &["network", "connect", "--alias", "caio", NETWORK, &id],
+                None,
+            )?,
+            "already exists",
+        )
+    }
+}
+
 /// One HTTP/1.0 request to the local server; 1.0 so the answer is never chunked.
 fn http(
     method: &str,
