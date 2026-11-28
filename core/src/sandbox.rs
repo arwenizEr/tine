@@ -75,6 +75,13 @@ fn check_cwd(cwd: &Path, home: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The sandboxed folder `dir` is in, judged by real paths so a link or `..` cannot step
+/// around it. `folders` are real paths.
+pub fn folder_of(dir: &Path, folders: &[PathBuf]) -> Option<PathBuf> {
+    let dir = fs::canonicalize(dir).ok()?;
+    folders.iter().find(|f| dir.starts_with(f)).cloned()
+}
+
 /// The `.git` folders of repos at `cwd` and up to three levels below it.
 fn repos(cwd: &Path) -> Vec<PathBuf> {
     const SKIP: [&str; 3] = ["node_modules", "target", ".git"];
@@ -605,6 +612,25 @@ mod tests {
             fs::read_link(home.path(".zshrc")).unwrap(),
             victim.path("zshrc")
         );
+    }
+
+    #[test]
+    fn folder_of_sees_through_links_and_dots() {
+        use crate::fs::tests::TempDir;
+        let (marked, other) = (TempDir::new(), TempDir::new());
+        fs::create_dir_all(marked.path("app/src")).unwrap();
+        symlink(marked.path("app"), other.path("shortcut")).unwrap();
+        let folders = [marked.0.clone()];
+        assert_eq!(
+            folder_of(&marked.path("app/src"), &folders),
+            Some(marked.0.clone())
+        );
+        assert_eq!(
+            folder_of(&other.path("shortcut/src"), &folders),
+            Some(marked.0.clone())
+        );
+        assert_eq!(folder_of(&marked.path("app/../.."), &folders), None);
+        assert_eq!(folder_of(&other.0, &folders), None);
     }
 
     #[test]

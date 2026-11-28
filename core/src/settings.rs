@@ -48,6 +48,8 @@ pub struct Sandbox {
     pub deny_read: Vec<String>,
     /// Hidden home entries linked read-only into the private home instead of copied.
     pub shared: Vec<String>,
+    /// Folders whose tabs always open restricted, whatever opens them.
+    pub folders: Vec<String>,
 }
 
 pub const SANDBOX_IMAGE: &str = "debian:stable-slim";
@@ -124,6 +126,7 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # writable = []              # real folders writable besides the tab's
 # deny_read = ["~/secrets"]  # unreadable on top of the built-in list
 # shared = [".rustup", ".nvm"]  # added to these: linked read-only instead of copied
+# folders = ["~/untrusted"]  # tabs opened here are always restricted
 
 # CompactAIO: local, version-aware API docs for you (Search Docs, Check Symbol) and your
 # agents (Connect Caio to Agents). Restricted tabs can reach it even with network off.
@@ -200,6 +203,7 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         .writable
         .iter()
         .chain(&settings.sandbox.deny_read)
+        .chain(&settings.sandbox.folders)
         .find(|p| !(p.starts_with('/') || p.starts_with("~/")))
     {
         return Err(AppError::new(

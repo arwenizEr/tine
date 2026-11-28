@@ -128,6 +128,43 @@ fn restricted_policy(
     })
 }
 
+/// `[sandbox] folders`, expanded and resolved; missing ones are left out.
+fn sandbox_folder_list(s: &settings::Settings) -> Vec<std::path::PathBuf> {
+    let Some(home) = std::env::var_os("HOME") else {
+        return vec![];
+    };
+    s.sandbox
+        .folders
+        .iter()
+        .filter_map(|f| std::fs::canonicalize(settings::expand_home(f, Path::new(&home))).ok())
+        .collect()
+}
+
+/// Deletes the private home of restricted tabs; the next one rebuilds it from the real home,
+/// picking up config changed since. Tool state kept there (sessions, logins) goes with it.
+#[tauri::command(rename_all = "snake_case")]
+async fn sandbox_home_reset(app: AppHandle) -> Result<(), AppError> {
+    let home = app
+        .path()
+        .app_data_dir()
+        .map_err(AppError::io)?
+        .join("sandbox-home");
+    // remove_dir_all removes links inside, never what they point to.
+    match std::fs::remove_dir_all(&home) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn sandbox_folders(app: AppHandle) -> Result<Vec<String>, AppError> {
+    let s = settings::load(&settings_path(&app)?)?;
+    Ok(sandbox_folder_list(&s)
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
 /// The Caio checkout from `[caio] path`.
 fn caio(app: &AppHandle) -> Result<caio::Caio, AppError> {
     let s = settings::load(&settings_path(app)?)?;
@@ -274,7 +311,22 @@ async fn pty_spawn(
     on_data: Channel<Response>,
 ) -> Result<u32, AppError> {
     let policy = match sandbox.as_deref() {
-        None => None,
+        // The interface opens tabs in sandboxed folders restricted; this catches any path
+        // that does not, such as a folder restored from before it was marked.
+        None => {
+            if let (Some(dir), Ok(s)) = (&cwd, settings_path(&app).and_then(|p| settings::load(&p)))
+                && let Some(f) = sandbox::folder_of(Path::new(dir), &sandbox_folder_list(&s))
+            {
+                return Err(AppError::new(
+                    "sandbox",
+                    format!(
+                        "{} is a sandboxed folder: open a restricted tab there",
+                        f.display()
+                    ),
+                ));
+            }
+            None
+        }
         Some("restricted") => {
             // Unlike the shell setting below, a broken settings file must not loosen the sandbox.
             let path = settings_path(&app)?;
@@ -765,6 +817,8 @@ pub fn run() {
             settings_set,
             open_full_disk_access_settings,
             pty_spawn,
+            sandbox_folders,
+            sandbox_home_reset,
             caio_status,
             caio_start,
             caio_call,

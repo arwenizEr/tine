@@ -2,7 +2,7 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { errorMessage, fsWatch, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { confirmDialog, errorMessage, fsWatch, sandboxHomeReset, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
 import { dirname, hasControlChars } from "./paths.ts";
@@ -165,6 +165,22 @@ export function mountApp(root: HTMLElement): () => void {
         else toast("No folder yet: wait for the shell prompt, then try again.");
       },
     })),
+    {
+      label: "Reset Sandbox Home…",
+      run: async () => {
+        const ok = await confirmDialog(
+          "Reset Sandbox Home",
+          "Restricted tabs get a fresh copy of your home's config on their next start. What tools saved there (logins, sessions, history) is deleted. Your real home is not touched.",
+        );
+        if (!ok) return;
+        try {
+          await sandboxHomeReset();
+          toast("Done. The next restricted tab copies your current config.");
+        } catch (e) {
+          toast(errorMessage(e));
+        }
+      },
+    },
     { label: "Search Docs (Caio)…", run: () => commands.searchDocs() },
     {
       label: "Check Symbol in Docs (Caio)…",
