@@ -497,14 +497,20 @@ mod tests {
             .current_dir(&cwd.0)
             .status();
         assert!(git.unwrap().success());
+        // As in the app: HOME is the tab's private home (see sandbox::prepare_home).
+        let private_home = TempDir::new();
         let home_probe = PathBuf::from(std::env::var("HOME").unwrap())
             .join(format!("tine-sandbox-probe-{}", std::process::id()));
         let policy = sandbox::Policy {
-            writable: vec![extra.0.clone()],
+            writable: vec![extra.0.clone(), private_home.0.clone()],
             deny_read: vec![secret.0.clone()],
             deny_write: vec![settings.0.clone()],
             network: false,
-            env: vec![("TINE_PROBE".into(), "on".into())],
+            env: vec![
+                ("TINE_PROBE".into(), "on".into()),
+                ("HOME".into(), private_home.0.clone().into()),
+            ],
+            ..sandbox::Policy::default()
         };
         // Each probe prints <name>=<exit code>; `ok` is built with arithmetic so the echoed
         // command line never matches.
@@ -527,11 +533,15 @@ mod tests {
             ),
             "touch .git/hooks/pre-commit 2>/dev/null; echo hook=$?".into(),
             "git config --local x.y 1 2>/dev/null; echo gitconfig=$?".into(),
+            // A repo made in the sandbox is its own: init, its config and hooks all work.
+            "git init -q sub && git -C sub config x.y 1 && touch sub/.git/hooks/h; echo newrepo=$?".into(),
             "git -c user.name=t -c user.email=t@t commit -q --allow-empty -m t 2>/dev/null; echo commit=$?".into(),
             "/usr/bin/open -g /nonexistent 2>/dev/null; echo open=$?".into(),
             "/usr/bin/osascript -e 1 >/dev/null 2>&1; echo osa=$?".into(),
             "curl -s -m 3 -o /dev/null http://1.1.1.1 2>/dev/null; echo net=$?".into(),
             "[ \"$TINE_PROBE\" = on ]; echo env=$?".into(),
+            "touch ~/.made-by-sandbox; echo ownhome_=$?".into(),
+            "/usr/bin/security list-keychains >/dev/null 2>&1; echo keychain=$?".into(),
         ]
         .join("\n");
         // A file, because a long line overflows the terminal's input buffer (1 KB on macOS).
@@ -552,12 +562,14 @@ mod tests {
                 .take_while(char::is_ascii_digit)
                 .collect::<String>()
         };
-        // zsh saves history after each command when the user's config says so; it must not fail.
         assert!(!text.contains("locking failed"), "{text:?}");
         assert_eq!(code("cwd"), "0");
         assert_eq!(code("extra"), "0");
         assert_eq!(code("commit"), "0");
         assert_eq!(code("env"), "0");
+        assert_eq!(code("newrepo"), "0");
+        assert_eq!(code("ownhome_"), "0");
+        assert!(private_home.path(".made-by-sandbox").exists());
         for denied in [
             "outside",
             "home",
@@ -568,6 +580,7 @@ mod tests {
             "open",
             "osa",
             "net",
+            "keychain",
         ] {
             assert_ne!(code(denied), "0", "{denied} should be denied: {text:?}");
         }
