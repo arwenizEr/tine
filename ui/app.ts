@@ -2,7 +2,7 @@ import * as filetree from "./filetree/index.ts";
 import { mountBadge } from "./git/badge.ts";
 import { startFollow } from "./git/follow.ts";
 import * as gitPanel from "./git/index.ts";
-import { confirmDialog, errorMessage, fsWatch, sandboxHomeReset, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
+import { confirmDialog, errorMessage, fsWatch, isolatedReset, sandboxHomeReset, offerFullDiskAccess, onFsChanged, onMenu, openFullDiskAccessSettings, openInEditor, pickFolder, settingsLoad, type Settings } from "./ipc.ts";
 import { buildKeymap, keyAction, type KeyAction, type Keymap } from "./keys.ts";
 import { mountPalette } from "./palette/index.ts";
 import { dirname, hasControlChars } from "./paths.ts";
@@ -176,6 +176,19 @@ export function mountApp(root: HTMLElement): () => void {
         try {
           await sandboxHomeReset();
           toast("Done. The next restricted tab copies your current config.");
+        } catch (e) {
+          toast(errorMessage(e));
+        }
+      },
+    },
+    {
+      label: "Reset Isolated Tabs Here",
+      run: async () => {
+        const dir = activeCwd() ?? treeRoot.get();
+        if (!dir) return toast("No folder yet: wait for the shell prompt, then try again.");
+        try {
+          await isolatedReset(dir);
+          toast("Isolated tabs here start from the plain image again.");
         } catch (e) {
           toast(errorMessage(e));
         }

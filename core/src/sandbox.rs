@@ -30,6 +30,16 @@ pub enum Sandbox {
 pub struct Isolated {
     pub image: String,
     pub network: bool,
+    /// Saved as an image when the tab ends, and started from on the next (see `keep_image`).
+    pub keep: bool,
+}
+
+/// A running isolated tab: what ends it, and the image it is saved as when `keep` is on.
+#[derive(Clone)]
+pub struct Container {
+    pub docker: PathBuf,
+    pub name: String,
+    pub keep_as: Option<String>,
 }
 
 pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
@@ -264,9 +274,13 @@ pub fn isolated_args(
     }
     let pid = std::process::id();
     let name = format!("tine-{pid}-{}", NEXT.fetch_add(1, Ordering::Relaxed));
-    let mut a: Vec<String> = ["run", "-it", "--rm", "--init", "--name", &name, "--label"]
+    let mut a: Vec<String> = ["run", "-it", "--init", "--name", &name, "--label"]
         .map(String::from)
         .into();
+    // A kept container must outlive its shell for `end` to save it.
+    if !iso.keep {
+        a.insert(2, "--rm".into());
+    }
     a.push(format!("{OWNER}={pid}"));
     a.extend([
         "-w".into(),
@@ -306,6 +320,55 @@ pub fn isolated_args(
         None => a.extend(["bash", "-l"].map(String::from)),
     }
     Ok((a, name))
+}
+
+/// The image a kept isolated tab for `cwd` is saved as: one per folder, by its real path.
+pub fn keep_image(cwd: &Path) -> String {
+    let path = fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    // FNV-1a: stable across Rust versions, unlike DefaultHasher.
+    let hash = path
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf29ce484222325u64, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x100000001b3)
+        });
+    format!("tine-keep:{hash:016x}")
+}
+
+pub fn image_exists(docker: &Path, image: &str) -> bool {
+    Command::new(docker)
+        .args(["image", "inspect", "--format", "x", image])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Ends an isolated tab's container, saving it first when it is kept.
+pub fn end(c: &Container) {
+    if let Some(image) = &c.keep_as {
+        let _ = Command::new(&c.docker)
+            .args(["commit", &c.name, image])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    remove_container(&c.docker, &c.name);
+}
+
+/// Forgets what kept isolated tabs in `cwd` saved: the next one starts from the plain image.
+pub fn forget(docker: &Path, cwd: &Path) -> Result<(), AppError> {
+    let out = Command::new(docker)
+        .args(["rmi", "-f", &keep_image(cwd)])
+        .output()?;
+    match out.status.success() || String::from_utf8_lossy(&out.stderr).contains("No such image") {
+        true => Ok(()),
+        false => Err(AppError::new(
+            "sandbox",
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        )),
+    }
 }
 
 /// Removes an isolated container. Needed because the docker CLI ignores the SIGHUP that
@@ -468,9 +531,11 @@ mod tests {
         let iso = Isolated {
             image: "debian:stable-slim".into(),
             network: false,
+            keep: false,
         };
         let (a, name) = isolated_args(&dir.0, Path::new("/nonexistent-home"), None, &iso).unwrap();
         let s = a.join(" ");
+        assert!(s.starts_with("run -it --rm "), "{s}");
         assert!(
             s.contains(&format!("type=bind,src={},dst=/work ", dir.0.display())),
             "{s}"
@@ -490,6 +555,7 @@ mod tests {
         let bad = Isolated {
             image: "--privileged".into(),
             network: true,
+            keep: false,
         };
         assert_eq!(
             isolated_args(&dir.0, Path::new("/x"), None, &bad)

@@ -140,6 +140,14 @@ fn sandbox_folder_list(s: &settings::Settings) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// Forgets what kept isolated tabs in `dir` saved.
+#[tauri::command(rename_all = "snake_case")]
+async fn isolated_reset(dir: String) -> Result<(), AppError> {
+    let docker =
+        sandbox::docker().ok_or_else(|| AppError::new("sandbox", "Docker is not installed"))?;
+    sandbox::forget(&docker, abs(&dir)?)
+}
+
 /// Deletes the private home of restricted tabs; the next one rebuilds it from the real home,
 /// picking up config changed since. Tool state kept there (sessions, logins) goes with it.
 #[tauri::command(rename_all = "snake_case")]
@@ -348,6 +356,7 @@ async fn pty_spawn(
                     .image
                     .unwrap_or_else(|| settings::SANDBOX_IMAGE.into()),
                 network: s.sandbox.network.unwrap_or(true),
+                keep: s.sandbox.keep.unwrap_or(false),
             }))
         }
         Some(other) => {
@@ -819,6 +828,7 @@ pub fn run() {
             pty_spawn,
             sandbox_folders,
             sandbox_home_reset,
+            isolated_reset,
             caio_status,
             caio_start,
             caio_call,

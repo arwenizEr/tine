@@ -41,6 +41,8 @@ pub struct Sandbox {
     pub local_ports: Vec<u16>,
     /// Image for isolated tabs; it needs bash.
     pub image: Option<String>,
+    /// Isolated tabs keep what was installed in them, per folder.
+    pub keep: Option<bool>,
     /// Lets tools use your keys: the keychain, ssh-agent and SANDBOX_DENY_READ.
     pub secrets: Option<bool>,
     /// Real folders writable besides the tab's own.
@@ -122,6 +124,7 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # network = true
 # local_ports = [3920]       # restricted tabs reach these on localhost even with network off
 # image = "debian:stable-slim"  # isolated tabs; needs bash
+# keep = false               # true: isolated tabs keep what you install, per folder
 # secrets = false            # true: tools may use the keychain, ssh-agent, ~/.ssh, ~/.aws, ...
 # writable = []              # real folders writable besides the tab's
 # deny_read = ["~/secrets"]  # unreadable on top of the built-in list

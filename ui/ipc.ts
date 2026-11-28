@@ -178,6 +178,8 @@ export const caioConnect = () => invoke<string[]>("caio_connect");
 export const sandboxFolders = () => invoke<string[]>("sandbox_folders");
 /** Deletes the private home of restricted tabs; the next restricted tab rebuilds it. */
 export const sandboxHomeReset = () => invoke<void>("sandbox_home_reset");
+/** Forgets what kept isolated tabs in `dir` saved (`[sandbox] keep`). */
+export const isolatedReset = (dir: string) => invoke<void>("isolated_reset", { dir });
 export const caioIndex = (dir: string) => invoke<string>("caio_index", { dir });
 
 /** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
