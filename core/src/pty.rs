@@ -112,6 +112,9 @@ impl PtyManager {
                 let mut c = CommandBuilder::new(sandbox::SANDBOX_EXEC);
                 c.args(sandbox::args(Path::new(dir), Path::new(&home), &policy)?);
                 c.arg(shell);
+                for (k, v) in &policy.env {
+                    c.env(k, v);
+                }
                 c
             }
         };
@@ -462,6 +465,7 @@ mod tests {
             deny_read: vec![secret.0.clone()],
             deny_write: vec![settings.0.clone()],
             network: false,
+            env: vec![("TINE_PROBE".into(), "on".into())],
         };
         // Each probe prints <name>=<exit code>; `ok` is built with arithmetic so the echoed
         // command line never matches.
@@ -488,6 +492,7 @@ mod tests {
             "/usr/bin/open -g /nonexistent 2>/dev/null; echo open=$?".into(),
             "/usr/bin/osascript -e 1 >/dev/null 2>&1; echo osa=$?".into(),
             "curl -s -m 3 -o /dev/null http://1.1.1.1 2>/dev/null; echo net=$?".into(),
+            "[ \"$TINE_PROBE\" = on ]; echo env=$?".into(),
         ]
         .join("\n");
         // A file, because a long line overflows the terminal's input buffer (1 KB on macOS).
@@ -513,6 +518,7 @@ mod tests {
         assert_eq!(code("cwd"), "0");
         assert_eq!(code("extra"), "0");
         assert_eq!(code("commit"), "0");
+        assert_eq!(code("env"), "0");
         for denied in [
             "outside",
             "home",

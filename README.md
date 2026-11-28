@@ -94,7 +94,9 @@ writable = ["~/.npm"]         # replaces the default list
 deny_read = ["~/secrets"]     # added to the built-in list
 ```
 
-This protects against mistakes and careless tools, not against code written to break out. Files in the folder still run outside the sandbox the next time you use them: `package.json` scripts, a `Makefile`, hooks under a custom `core.hooksPath`. Claude Code's own sandbox cannot start inside a restricted tab; turn it off there.
+This protects against mistakes and careless tools, not against code written to break out. Files in the folder still run outside the sandbox the next time you use them: `package.json` scripts, a `Makefile`, hooks under a custom `core.hooksPath`.
+
+**Claude Code in a restricted tab** gets its own config folder (`CLAUDE_CONFIG_DIR`, in tine's app data), because the real `~/.claude` and `~/.claude.json` hold hooks and MCP servers that run outside the sandbox. It cannot reach your keychain, so sign it in with a token: run `claude setup-token` once in a normal tab, then `export CLAUDE_CODE_OAUTH_TOKEN=…` in the restricted tab. Anything running in that tab can read the token. Claude Code's own sandbox cannot start inside this one; leave it off there.
 
 ## Security
 

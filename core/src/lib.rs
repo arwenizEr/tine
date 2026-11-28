@@ -69,9 +69,12 @@ async fn settings_set(
 }
 
 /// The rules for a restricted tab, from the `[sandbox]` settings.
+/// `claude_dir` becomes Claude Code's config folder in the tab: its own, because the real
+/// ~/.claude and ~/.claude.json hold hooks and MCP servers that run outside the sandbox.
 fn restricted_policy(
     s: &settings::Sandbox,
     settings_file: &Path,
+    claude_dir: &Path,
 ) -> Result<sandbox::Policy, AppError> {
     let home =
         std::env::var_os("HOME").ok_or_else(|| AppError::new("sandbox", "HOME is not set"))?;
@@ -85,7 +88,12 @@ fn restricted_policy(
         Some(list) => expand(list.iter().map(String::as_str), home),
         None => expand(settings::SANDBOX_WRITABLE, home),
     };
-    writable.extend([std::env::temp_dir(), "/private/tmp".into()]);
+    std::fs::create_dir_all(claude_dir)?;
+    writable.extend([
+        std::env::temp_dir(),
+        "/private/tmp".into(),
+        claude_dir.to_path_buf(),
+    ]);
     let mut deny_read = expand(settings::SANDBOX_DENY_READ, home);
     deny_read.extend(expand(s.deny_read.iter().map(String::as_str), home));
     Ok(sandbox::Policy {
@@ -98,6 +106,11 @@ fn restricted_policy(
             .into_iter()
             .collect(),
         network: s.network.unwrap_or(true),
+        env: vec![
+            ("CLAUDE_CONFIG_DIR".into(), claude_dir.into()),
+            // Its updater writes to ~/.local, which the sandbox does not allow.
+            ("DISABLE_AUTOUPDATER".into(), "1".into()),
+        ],
     })
 }
 
@@ -121,7 +134,12 @@ async fn pty_spawn(
             let path = settings_path(&app)?;
             let s = settings::load(&path)
                 .map_err(|e| AppError::new("sandbox", format!("settings: {}", e.message)))?;
-            Some(restricted_policy(&s.sandbox, &path)?)
+            let claude = app
+                .path()
+                .app_data_dir()
+                .map_err(AppError::io)?
+                .join("sandbox-claude");
+            Some(restricted_policy(&s.sandbox, &path, &claude)?)
         }
         Some(other) => {
             return Err(AppError::new(

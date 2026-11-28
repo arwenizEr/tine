@@ -19,6 +19,8 @@ pub struct Policy {
     /// Never writable, even inside a writable folder: tine's settings and shell integration.
     pub deny_write: Vec<PathBuf>,
     pub network: bool,
+    /// Set in the shell's environment.
+    pub env: Vec<(String, OsString)>,
 }
 
 /// Folders a restricted tab may not start in: writing there could change what runs outside
@@ -187,6 +189,7 @@ mod tests {
             deny_read: vec![],
             deny_write: vec![],
             network: true,
+            env: vec![],
         };
         let (text, params) = profile(&policy);
         assert!(!text.contains("/tmp/x"), "{text}");
