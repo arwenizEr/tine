@@ -26,7 +26,7 @@ Run Claude Code, Codex or any CLI agent and review its changes live, on one scre
 - **Full terminal:** tabs, split view, command blocks, clickable paths, GPU rendering.
 - **Files:** a tree that follows your shell, previews, light editing, search in files, Open in Editor (VS Code, Cursor, Zed).
 - **Web panel:** docs, a dev server or a video in place of the viewer, with bookmarks.
-- **Restricted tabs (macOS):** a shell where every tool works, but writes only to its folder and a private copy of your home, and cannot read your keys.
+- **Restricted tabs (macOS; Linux with bubblewrap):** a shell where every tool works, but writes only to its folder and a private copy of your home, and cannot read your keys.
 - **Isolated tabs:** a root shell in a throwaway Docker container that sees only its folder.
 
 No built-in AI, account or telemetry. A Rust core on the system webview, under 20 MB.
@@ -101,6 +101,8 @@ folders = ["~/untrusted"]     # tabs opened here are always restricted
 ```
 
 Tabs tine opens in a `folders` entry (new tab, split, Open Terminal Here, restore) are always restricted, and a normal tab that `cd`s into one is warned. **Reset Sandbox Home…** in the command palette deletes the private home, so the next restricted tab copies your current config.
+
+**On Linux** restricted tabs use [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`, in most distributions' packages): the same writable folders and hidden secrets, with a private `/tmp`, its own process list and no session bus. `local_ports` with the network off, and `secrets` for keyrings over D-Bus, are macOS only. Ubuntu 24.04 and later allow bwrap's user namespaces only with an AppArmor profile for it; without one the tab prints `setting up uid map: Permission denied`.
 
 This protects against mistakes and careless tools, not against code written to break out. Run a folder's files from a normal tab and they run outside the sandbox, so something a restricted tab wrote there can run unsandboxed later. Claude Code's own sandbox cannot start inside this one (macOS does not nest them); it does not need to, since every command Claude runs is already sandboxed.
 

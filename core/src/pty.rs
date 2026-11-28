@@ -147,8 +147,9 @@ impl PtyManager {
             Some(Sandbox::Restricted(mut policy)) => {
                 let (home, dir) = sandboxed()?;
                 policy.deny_write.extend(self.integration_dir.clone());
-                let mut c = CommandBuilder::new(sandbox::SANDBOX_EXEC);
-                c.args(sandbox::args(Path::new(dir), Path::new(&home), &policy)?);
+                let prefix = sandbox::wrapper(Path::new(dir), Path::new(&home), &policy)?;
+                let mut c = CommandBuilder::new(&prefix[0]);
+                c.args(&prefix[1..]);
                 c.arg(shell);
                 for (k, v) in &policy.env {
                     c.env(k, v);

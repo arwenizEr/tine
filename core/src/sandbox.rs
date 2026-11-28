@@ -42,7 +42,7 @@ pub struct Container {
     pub keep_as: Option<String>,
 }
 
-pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 
 /// What a restricted shell may touch. Paths need not exist.
 #[derive(Debug, Clone, Default)]
@@ -199,27 +199,135 @@ fn profile(policy: &Policy, repos: &[PathBuf]) -> (String, Vec<(String, PathBuf)
     (p, params)
 }
 
-/// Arguments for `sandbox-exec` that run what follows them under `policy` in `cwd`.
-pub fn args(cwd: &Path, home: &Path, policy: &Policy) -> Result<Vec<OsString>, AppError> {
-    if !cfg!(target_os = "macos") {
-        return Err(AppError::new(
-            "sandbox",
-            "restricted tabs need macOS for now",
-        ));
-    }
+/// The command that runs what follows it under `policy` in `cwd`: `sandbox-exec` with a
+/// Seatbelt profile on macOS, `bwrap` (bubblewrap) on Linux.
+pub fn wrapper(cwd: &Path, home: &Path, policy: &Policy) -> Result<Vec<OsString>, AppError> {
     let cwd = std::fs::canonicalize(cwd)?;
     let home = real(home);
     check_cwd(&cwd, &home)?;
-    let (profile, mut params) = profile(policy, &repos(&cwd));
-    params.push(("CWD".into(), cwd));
-    let mut out: Vec<OsString> = Vec::new();
-    for (name, path) in params {
-        let mut d = OsString::from(format!("{name}="));
-        d.push(path);
-        out.extend(["-D".into(), d]);
+    let repos = repos(&cwd);
+    if cfg!(target_os = "macos") {
+        let (profile, mut params) = profile(policy, &repos);
+        params.push(("CWD".into(), cwd));
+        let mut out: Vec<OsString> = vec![SANDBOX_EXEC.into()];
+        for (name, path) in params {
+            let mut d = OsString::from(format!("{name}="));
+            d.push(path);
+            out.extend(["-D".into(), d]);
+        }
+        out.extend(["-p".into(), profile.into()]);
+        Ok(out)
+    } else if cfg!(target_os = "linux") {
+        let bwrap = ["/usr/bin/bwrap", "/usr/local/bin/bwrap"]
+            .map(PathBuf::from)
+            .into_iter()
+            .find(|p| p.is_file())
+            .ok_or_else(|| {
+                AppError::new(
+                    "sandbox",
+                    "restricted tabs on Linux need bubblewrap (bwrap)",
+                )
+            })?;
+        bwrap_args(&bwrap, &cwd, policy, &repos, linux_uid())
+    } else {
+        Err(AppError::new(
+            "sandbox",
+            "restricted tabs need macOS or Linux",
+        ))
     }
-    out.extend(["-p".into(), profile.into()]);
-    Ok(out)
+}
+
+fn linux_uid() -> Option<u32> {
+    let status = fs::read_to_string("/proc/self/status").ok()?;
+    status.lines().find_map(|l| {
+        l.strip_prefix("Uid:")?
+            .split_whitespace()
+            .next()?
+            .parse()
+            .ok()
+    })
+}
+
+/// bubblewrap's equivalent of the Seatbelt profile. Paths are separate arguments, so a folder
+/// name cannot change the meaning of the others. Later mounts cover earlier ones.
+fn bwrap_args(
+    bwrap: &Path,
+    cwd: &Path,
+    policy: &Policy,
+    repos: &[PathBuf],
+    uid: Option<u32>,
+) -> Result<Vec<OsString>, AppError> {
+    if !policy.network && !policy.local_ports.is_empty() {
+        return Err(AppError::new(
+            "sandbox",
+            "local_ports with network = false needs macOS",
+        ));
+    }
+    let mut a: Vec<OsString> = vec![bwrap.into()];
+    let mut add = |args: &[&std::ffi::OsStr]| a.extend(args.iter().map(OsString::from));
+    let os = |s: &'static str| std::ffi::OsStr::new(s);
+    // Read-only everything, with own /dev, /proc (own pids: no ptrace or kill of the host's)
+    // and a private /tmp, where the host's X11 and agent sockets live.
+    add(&[
+        os("--die-with-parent"),
+        os("--unshare-pid"),
+        os("--unshare-ipc"),
+    ]);
+    add(&[
+        os("--ro-bind"),
+        os("/"),
+        os("/"),
+        os("--dev"),
+        os("/dev"),
+        os("--proc"),
+        os("/proc"),
+    ]);
+    add(&[os("--tmpfs"), os("/tmp")]);
+    if !policy.secrets {
+        // The session bus (systemd-run --user, keyrings) and the system bus.
+        if let Some(uid) = uid {
+            let run = PathBuf::from(format!("/run/user/{uid}"));
+            if run.is_dir() {
+                add(&[os("--tmpfs"), run.as_os_str()]);
+            }
+        }
+        if Path::new("/run/dbus").is_dir() {
+            add(&[os("--tmpfs"), os("/run/dbus")]);
+        }
+    }
+    if !policy.network {
+        add(&[os("--unshare-net")]);
+    }
+    let private_tmp = |p: &Path| {
+        p.starts_with("/tmp") || p.starts_with("/private/tmp") || *p == std::env::temp_dir()
+    };
+    for w in std::iter::once(&cwd.to_path_buf()).chain(&policy.writable) {
+        if w.exists() && !private_tmp(w) {
+            add(&[os("--bind"), w.as_os_str(), w.as_os_str()]);
+        }
+    }
+    let hooks = repos
+        .iter()
+        .flat_map(|r| [r.join("hooks"), r.join("config")]);
+    for p in hooks.chain(policy.deny_write.iter().cloned()) {
+        if p.exists() {
+            add(&[os("--ro-bind"), p.as_os_str(), p.as_os_str()]);
+        }
+    }
+    for p in &policy.deny_read {
+        if p.is_dir() {
+            add(&[
+                os("--tmpfs"),
+                p.as_os_str(),
+                os("--remount-ro"),
+                p.as_os_str(),
+            ]);
+        } else if p.exists() {
+            add(&[os("--ro-bind"), os("/dev/null"), p.as_os_str()]);
+        }
+    }
+    add(&[os("--chdir"), cwd.as_os_str(), os("--")]);
+    Ok(a)
 }
 
 /// Where the tab's folder appears inside an isolated container.
@@ -490,8 +598,15 @@ fn library(src: &Path, dst: &Path, rules: &HomeRules) -> io::Result<()> {
 /// clones are not available (another file system), links instead: read-only, but working.
 fn clone(src: &Path, dst: &Path, stage: &Path, hide: &[PathBuf]) -> io::Result<()> {
     remove_entry(stage)?;
+    // APFS clones on macOS; on Linux reflinks where the file system has them (btrfs, xfs),
+    // a full copy otherwise.
+    let flags: &[&str] = if cfg!(target_os = "macos") {
+        &["-c", "-R"]
+    } else {
+        &["-a", "--reflink=auto"]
+    };
     let cloned = Command::new("/bin/cp")
-        .args(["-c", "-R"])
+        .args(flags)
         .args([src, stage])
         .status()
         .is_ok_and(|s| s.success());
@@ -697,6 +812,79 @@ mod tests {
         );
         assert_eq!(folder_of(&marked.path("app/../.."), &folders), None);
         assert_eq!(folder_of(&other.0, &folders), None);
+    }
+
+    #[test]
+    fn bwrap_binds_only_what_is_writable_and_hides_secrets() {
+        use crate::fs::tests::TempDir;
+        let (cwd, extra, secret, settings) = (
+            TempDir::new(),
+            TempDir::new(),
+            TempDir::new(),
+            TempDir::new(),
+        );
+        fs::create_dir_all(cwd.path(".git/hooks")).unwrap();
+        fs::write(cwd.path(".git/config"), "").unwrap();
+        fs::write(secret.path("token"), "").unwrap();
+        let policy = Policy {
+            writable: vec![
+                extra.0.clone(),
+                "/tmp".into(),
+                PathBuf::from("/no/such/dir"),
+            ],
+            deny_read: vec![
+                secret.0.clone(),
+                secret.path("token"),
+                PathBuf::from("/no/such/secret"),
+            ],
+            deny_write: vec![settings.0.clone()],
+            network: false,
+            ..Policy::default()
+        };
+        let a = bwrap_args(
+            Path::new("/usr/bin/bwrap"),
+            &cwd.0,
+            &policy,
+            &[cwd.path(".git")],
+            None,
+        )
+        .unwrap();
+        let s: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        let has = |w: &[&str]| s.windows(w.len()).any(|x| x == w);
+        let d = |p: PathBuf| p.display().to_string();
+        let (c, e, sec, set) = (
+            d(cwd.0.clone()),
+            d(extra.0.clone()),
+            d(secret.0.clone()),
+            d(settings.0.clone()),
+        );
+        let (hooks, token) = (d(cwd.path(".git/hooks")), d(secret.path("token")));
+        assert!(
+            has(&["--ro-bind", "/", "/"]) && has(&["--tmpfs", "/tmp"]) && has(&["--unshare-net"])
+        );
+        assert!(has(&["--bind", &c, &c]) && has(&["--bind", &e, &e]));
+        assert!(
+            !s.iter()
+                .any(|x| x == "/no/such/dir" || x == "/no/such/secret"),
+            "missing paths are skipped"
+        );
+        assert!(
+            !has(&["--bind", "/tmp", "/tmp"]),
+            "the host's /tmp stays out"
+        );
+        assert!(has(&["--ro-bind", &hooks, &hooks]) && has(&["--ro-bind", &set, &set]));
+        assert!(has(&["--tmpfs", &sec, "--remount-ro", &sec]));
+        assert!(has(&["--ro-bind", "/dev/null", &token]));
+        assert_eq!(s.last().unwrap(), "--", "the shell comes after the options");
+        // The folder is bound before the repo's hooks are made read-only over it.
+        let pos = |x: &str| s.iter().position(|y| y == x).unwrap();
+        assert!(pos(&c) < pos(&hooks));
+
+        let ports = Policy {
+            local_ports: vec![3920],
+            ..Policy::default()
+        };
+        assert!(bwrap_args(Path::new("/usr/bin/bwrap"), &cwd.0, &ports, &[], None).is_err());
     }
 
     #[test]

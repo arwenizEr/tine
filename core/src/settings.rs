@@ -61,7 +61,7 @@ pub const SANDBOX_SHARED: [&str; 2] = [".rustup", ".nvm"];
 
 /// Secrets a restricted tab may not read unless `secrets` is on; also VM folders, whose
 /// keys and sockets control Docker.
-pub const SANDBOX_DENY_READ: [&str; 21] = [
+pub const SANDBOX_DENY_READ: [&str; 23] = [
     "~/.ssh",
     "~/.aws",
     "~/.gnupg",
@@ -80,6 +80,8 @@ pub const SANDBOX_DENY_READ: [&str; 21] = [
     "~/Library/Cookies",
     "~/Library/Application Support/Google/Chrome",
     "~/Library/Application Support/Firefox",
+    "~/.local/share/keyrings",
+    "~/.password-store",
     "~/.colima",
     "~/.lima",
     "~/.orbstack",
