@@ -164,8 +164,6 @@ export type Settings = {
 export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
 
 /** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
-/** Token from `claude setup-token` that signs Claude Code in inside restricted tabs; null forgets it. */
-export const claudeTokenSet = (token: string | null) => invoke<void>("claude_token_set", { token });
 export const settingsSet = (key: string, value: string | number | string[] | null) => invoke<Settings>("settings_set", { key, value });
 
 // --- App ---

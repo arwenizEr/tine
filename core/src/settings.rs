@@ -22,21 +22,27 @@ pub struct Settings {
     pub sandbox: Sandbox,
 }
 
-/// Restricted tabs. Paths are absolute or start with `~/`. `writable` replaces
-/// SANDBOX_WRITABLE; `deny_read` adds to SANDBOX_DENY_READ, so a setting never unhides a secret.
+/// Restricted tabs. Paths are absolute or start with `~/`. `deny_read` adds to
+/// SANDBOX_DENY_READ and `shared` to SANDBOX_SHARED.
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Sandbox {
     pub network: Option<bool>,
-    pub writable: Option<Vec<String>>,
+    /// Lets tools use your keys: the keychain, ssh-agent and SANDBOX_DENY_READ.
+    pub secrets: Option<bool>,
+    /// Real folders writable besides the tab's own.
+    pub writable: Vec<String>,
     pub deny_read: Vec<String>,
+    /// Hidden home entries linked read-only into the private home instead of copied.
+    pub shared: Vec<String>,
 }
 
-/// Package caches that check what they read back, so a sandbox cannot plant code in them.
-pub const SANDBOX_WRITABLE: [&str; 1] = ["~/.npm"];
+/// Big toolchains, linked read-only into the private home: they work as they are.
+pub const SANDBOX_SHARED: [&str; 2] = [".rustup", ".nvm"];
 
-/// Secrets a restricted tab may not read.
-pub const SANDBOX_DENY_READ: [&str; 18] = [
+/// Secrets a restricted tab may not read unless `secrets` is on; also VM folders, whose
+/// keys and sockets control Docker.
+pub const SANDBOX_DENY_READ: [&str; 21] = [
     "~/.ssh",
     "~/.aws",
     "~/.gnupg",
@@ -55,6 +61,9 @@ pub const SANDBOX_DENY_READ: [&str; 18] = [
     "~/Library/Cookies",
     "~/Library/Application Support/Google/Chrome",
     "~/Library/Application Support/Firefox",
+    "~/.colima",
+    "~/.lima",
+    "~/.orbstack",
 ];
 
 /// `~/x` to `<home>/x`; other paths unchanged.
@@ -89,12 +98,14 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # Bookmarks for the web panel (◫ Web); the panel's ☆ button adds to this list.
 # bookmarks = ["https://www.youtube.com/"]
 
-# Restricted tabs ("New Restricted Tab"): the shell may write only to its folder and these.
+# Restricted tabs ("New Restricted Tab"): the shell writes only to its folder and a private
+# copy of your home's dotfiles, so every tool keeps working without changing the real ones.
 # [sandbox]
 # network = true
-# writable = ["~/.npm"]
-# Unreadable on top of the built-in list (~/.ssh, ~/.aws, ~/.gnupg, keychains, cookies, ...).
-# deny_read = ["~/secrets"]
+# secrets = false            # true: tools may use the keychain, ssh-agent, ~/.ssh, ~/.aws, ...
+# writable = []              # real folders writable besides the tab's
+# deny_read = ["~/secrets"]  # unreadable on top of the built-in list
+# shared = [".rustup", ".nvm"]  # added to these: linked read-only instead of copied
 
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
@@ -165,7 +176,6 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         .sandbox
         .writable
         .iter()
-        .flatten()
         .chain(&settings.sandbox.deny_read)
         .find(|p| !(p.starts_with('/') || p.starts_with("~/")))
     {
