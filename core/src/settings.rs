@@ -20,6 +20,15 @@ pub struct Settings {
     /// Action name -> key chord such as "cmd+t" or "ctrl+shift+t".
     pub keybindings: BTreeMap<String, String>,
     pub sandbox: Sandbox,
+    pub caio: Caio,
+}
+
+/// CompactAIO, the local docs server (see caio.rs).
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Caio {
+    /// The CompactAIO checkout, where `npm run setup` was run.
+    pub path: Option<String>,
 }
 
 /// Restricted tabs. Paths are absolute or start with `~/`. `deny_read` adds to
@@ -116,6 +125,11 @@ const TEMPLATE: &str = r#"# tine settings. Saved changes apply at once; delete a
 # deny_read = ["~/secrets"]  # unreadable on top of the built-in list
 # shared = [".rustup", ".nvm"]  # added to these: linked read-only instead of copied
 
+# CompactAIO: local, version-aware API docs for you (Search Docs, Check Symbol) and your
+# agents (Connect Caio to Agents). Restricted tabs can reach it even with network off.
+# [caio]
+# path = "~/projects/compactaio"
+
 # Shortcuts. Modifiers: cmd, ctrl, alt, shift. Keys: a letter, a digit, up, down.
 # Actions: newTab, closeTab, clear, toggleSidebar, toggleViewer, newFile, openFolder,
 #          find, palette, copy, paste, prevBlock, nextBlock, sendSelection, split, settings,
@@ -199,6 +213,14 @@ fn parse(text: &str) -> Result<Settings, AppError> {
         return Err(AppError::new(
             "invalid_settings",
             format!("sandbox.image must be an image name, not \"{image}\""),
+        ));
+    }
+    if let Some(p) = &settings.caio.path
+        && !(p.starts_with('/') || p.starts_with("~/"))
+    {
+        return Err(AppError::new(
+            "invalid_settings",
+            format!("caio.path must start with / or ~/, not \"{p}\""),
         ));
     }
     if settings.sandbox.local_ports.contains(&0) {
@@ -382,6 +404,7 @@ mod tests {
             "[sandbox]\ndeny_read = [\"~user/x\"]",
             "[sandbox]\nnetwork = \"off\"",
             "[sandbox]\nlocal_ports = [0]",
+            "[caio]\npath = \"projects/compactaio\"",
             "[sandbox]\nlocal_ports = [70000]",
             "[sandbox]\nimage = \"--privileged\"",
         ] {

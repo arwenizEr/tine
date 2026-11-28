@@ -164,6 +164,19 @@ export type Settings = {
 export const settingsLoad = () => invoke<{ path: string; settings: Settings }>("settings_load");
 
 /** Sets one top-level setting in the file (null: back to the default); returns the new settings. */
+// --- CompactAIO (core/src/caio.rs) ---
+
+export type CaioStatus = { configured: boolean; up: boolean };
+export const caioStatus = () => invoke<CaioStatus>("caio_status");
+export const caioStart = () => invoke<void>("caio_start");
+export const caioCall = (tool: "search_docs" | "check_symbol" | "get_endpoint", args: Record<string, unknown>) =>
+  invoke<Record<string, unknown>>("caio_call", { tool, args });
+/** Saves Markdown where the viewer can open it; returns its path. */
+export const caioNote = (markdown: string) => invoke<string>("caio_note", { markdown });
+/** One line per agent and home, "claude (...): connected". */
+export const caioConnect = () => invoke<string[]>("caio_connect");
+export const caioIndex = (dir: string) => invoke<string>("caio_index", { dir });
+
 export const settingsSet = (key: string, value: string | number | string[] | null) => invoke<Settings>("settings_set", { key, value });
 
 // --- App ---

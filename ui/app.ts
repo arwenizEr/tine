@@ -15,6 +15,8 @@ import { activeCwd } from "./state/tabs.ts";
 import * as terminal from "./terminal/index.ts";
 import { watch } from "./signal.ts";
 import { openSettings } from "./components/settings.ts";
+import { promptName } from "./components/prompt.ts";
+import * as caio from "./caio/index.ts";
 import { toast } from "./components/toast.ts";
 import * as viewer from "./viewer/index.ts";
 import * as web from "./web/index.ts";
@@ -144,6 +146,15 @@ export function mountApp(root: HTMLElement): () => void {
 
   commands.openSettings = () => openSettings(openSettingsFile);
 
+  const typed = (v: string) => (v ? null : "Type something to look up.");
+  commands.searchDocs = async () => {
+    const input = await promptName("Search docs (a library first narrows it, as in: zod: min length)", "", typed);
+    if (input) void caio.searchDocs(input, activeCwd());
+  };
+  // The server can be started or stopped outside tine; a cheap local check keeps the dot honest.
+  void caio.refresh();
+  const caioTimer = setInterval(() => void caio.refresh(), 30_000);
+
   const palette = mountPalette(root, () => [
     { label: "New Tab", run: () => term.newTab() },
     ...(["restricted", "isolated"] as const).map((kind) => ({
@@ -154,6 +165,24 @@ export function mountApp(root: HTMLElement): () => void {
         else toast("No folder yet: wait for the shell prompt, then try again.");
       },
     })),
+    { label: "Search Docs (Caio)…", run: () => commands.searchDocs() },
+    {
+      label: "Check Symbol in Docs (Caio)…",
+      run: async () => {
+        const input = await promptName("Package and symbol, as in: zod string", "", typed);
+        if (input) void caio.checkSymbol(input, activeCwd());
+      },
+    },
+    { label: "Start Caio", run: () => void caio.start() },
+    { label: "Connect Caio to Agents", run: () => void caio.connect() },
+    {
+      label: "Index This Project in Caio",
+      run: () => {
+        const dir = activeCwd() ?? treeRoot.get();
+        if (dir) void caio.index(dir);
+        else toast("No folder yet: wait for the shell prompt, then try again.");
+      },
+    },
     { label: "Close Tab", run: () => term.closeTab() },
     { label: "Split Terminal", run: () => term.split() },
     { label: "New File…", run: newFile },
@@ -336,6 +365,7 @@ export function mountApp(root: HTMLElement): () => void {
     disposeGit();
     disposeTree();
     disposeSwitch();
+    clearInterval(caioTimer);
     workspace.remove();
     statusBar.remove();
   };

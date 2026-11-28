@@ -1,3 +1,4 @@
+mod caio;
 mod error;
 mod fs;
 mod git;
@@ -127,6 +128,138 @@ fn restricted_policy(
     })
 }
 
+/// The Caio checkout from `[caio] path`.
+fn caio(app: &AppHandle) -> Result<caio::Caio, AppError> {
+    let s = settings::load(&settings_path(app)?)?;
+    let home = std::env::var_os("HOME").ok_or_else(|| AppError::new("io", "HOME is not set"))?;
+    let path = s.caio.path.ok_or_else(|| {
+        AppError::new(
+            "caio",
+            "set [caio] path in settings to your CompactAIO checkout",
+        )
+    })?;
+    caio::Caio::load(&settings::expand_home(&path, Path::new(&home)))
+}
+
+#[derive(Serialize)]
+struct CaioStatus {
+    configured: bool,
+    up: bool,
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_status(app: AppHandle) -> Result<CaioStatus, AppError> {
+    Ok(match caio(&app) {
+        Ok(c) => CaioStatus {
+            configured: true,
+            up: c.up(),
+        },
+        Err(_) => CaioStatus {
+            configured: false,
+            up: false,
+        },
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_start(app: AppHandle) -> Result<(), AppError> {
+    let docker = sandbox::docker().ok_or_else(|| {
+        AppError::new(
+            "caio",
+            "Caio needs Docker (Colima, OrbStack or Docker Desktop)",
+        )
+    })?;
+    caio(&app)?.start(&docker)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_call(
+    app: AppHandle,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, AppError> {
+    caio(&app)?.call(&tool, args)
+}
+
+/// Writes a Caio answer, already turned into Markdown, where the viewer can open it.
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_note(app: AppHandle, markdown: String) -> Result<String, AppError> {
+    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(AppError::io)?
+        .join("caio");
+    std::fs::create_dir_all(&dir)?;
+    // shortcut: the last 20 answers are kept; older names are reused.
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 20;
+    let path = dir.join(format!("docs-{n}.md"));
+    std::fs::write(&path, markdown)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Registers Caio with the installed agents, in the real home and, through the sandbox, in
+/// the private home of restricted tabs.
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_connect(app: AppHandle) -> Result<Vec<String>, AppError> {
+    let c = caio(&app)?;
+    let home = std::path::PathBuf::from(
+        std::env::var_os("HOME").ok_or_else(|| AppError::new("io", "HOME is not set"))?,
+    );
+    let mut targets = vec![caio::Target {
+        home: home.clone(),
+        prefix: vec![],
+    }];
+    let path = settings_path(&app)?;
+    let s = settings::load(&path)?;
+    let data = app.path().app_data_dir().map_err(AppError::io)?;
+    if cfg!(target_os = "macos") {
+        let policy = restricted_policy(&s.sandbox, &path, &data)?;
+        let mut prefix = vec![sandbox::SANDBOX_EXEC.into()];
+        prefix.extend(sandbox::args(&std::env::temp_dir(), &home, &policy)?);
+        targets.push(caio::Target {
+            home: data.join("sandbox-home"),
+            prefix,
+        });
+    }
+    let report = caio::connect(&c, &home, &targets);
+    if report.is_empty() {
+        return Err(AppError::new("caio", "no agent CLI found (claude)"));
+    }
+    Ok(report)
+}
+
+/// Indexes the dependencies of the project in `dir` at its lockfile's versions; minutes.
+#[tauri::command(rename_all = "snake_case")]
+async fn caio_index(app: AppHandle, dir: String) -> Result<String, AppError> {
+    let c = caio(&app)?;
+    let dir = abs(&dir)?.to_path_buf();
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    tauri::async_runtime::spawn_blocking(move || {
+        // A login, interactive shell, for the user's PATH to node (nvm and the like).
+        let out = std::process::Command::new(shell)
+            .args(["-lic", r#"npm run -s ingest -- project "$1""#, "caio-index"])
+            .arg(&dir)
+            .current_dir(&c.dir)
+            .stdin(std::process::Stdio::null())
+            .output()?;
+        let text = String::from_utf8_lossy(if out.status.success() {
+            &out.stdout
+        } else {
+            &out.stderr
+        });
+        let tail: Vec<&str> = text.lines().rev().take(8).collect();
+        let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+        if out.status.success() {
+            Ok(tail)
+        } else {
+            Err(AppError::new("caio", tail))
+        }
+    })
+    .await
+    .map_err(AppError::io)?
+}
+
 // Commands are async so slow disk or PTY work never stalls the main (UI) thread.
 #[tauri::command(rename_all = "snake_case")]
 #[allow(clippy::too_many_arguments)]
@@ -148,9 +281,11 @@ async fn pty_spawn(
             let s = settings::load(&path)
                 .map_err(|e| AppError::new("sandbox", format!("settings: {}", e.message)))?;
             let data = app.path().app_data_dir().map_err(AppError::io)?;
-            Some(sandbox::Sandbox::Restricted(restricted_policy(
-                &s.sandbox, &path, &data,
-            )?))
+            let mut policy = restricted_policy(&s.sandbox, &path, &data)?;
+            if s.caio.path.is_some() {
+                policy.local_ports.push(caio::PORT);
+            }
+            Some(sandbox::Sandbox::Restricted(policy))
         }
         Some("isolated") => {
             let s = settings::load(&settings_path(&app)?)
@@ -630,6 +765,12 @@ pub fn run() {
             settings_set,
             open_full_disk_access_settings,
             pty_spawn,
+            caio_status,
+            caio_start,
+            caio_call,
+            caio_note,
+            caio_connect,
+            caio_index,
             pty_write,
             pty_resize,
             pty_kill,
