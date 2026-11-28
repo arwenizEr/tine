@@ -43,6 +43,8 @@ pub struct Policy {
     /// Never writable, even inside a writable folder: tine's settings and shell integration.
     pub deny_write: Vec<PathBuf>,
     pub network: bool,
+    /// Local TCP ports reachable even with `network` off: a docs server, a dev database.
+    pub local_ports: Vec<u16>,
     /// Keychain and `security` allowed, plus these local sockets (ssh-agent).
     pub secrets: bool,
     pub sockets: Vec<PathBuf>,
@@ -172,6 +174,10 @@ fn profile(policy: &Policy, repos: &[PathBuf]) -> (String, Vec<(String, PathBuf)
         }
     } else {
         p += "(deny network*)\n";
+        // Numbers, not paths: nothing a setting holds can become profile text here.
+        for port in &policy.local_ports {
+            p += &format!("(allow network-outbound (remote ip \"localhost:{port}\"))\n");
+        }
     }
     (p, params)
 }

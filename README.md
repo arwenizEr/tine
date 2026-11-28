@@ -93,6 +93,7 @@ palette = "cmd+shift+p"
 [sandbox]
 secrets = true                # keychain, ssh-agent, ~/.ssh, ~/.aws, ...: default false
 network = false               # default true
+local_ports = [3920]          # reachable on localhost even with network off: a docs server, a database
 writable = ["~/data"]         # real folders writable besides the tab's
 deny_read = ["~/secrets"]     # added to the built-in list
 shared = [".pyenv"]           # linked read-only instead of copied, like ~/.rustup
