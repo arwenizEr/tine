@@ -12,6 +12,9 @@
 
 use crate::error::AppError;
 use std::ffi::OsString;
+use std::fs;
+use std::io::{self, Write};
+use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -263,7 +266,7 @@ pub fn isolated_args(
 
 /// Removes an isolated container. Needed because the docker CLI ignores the SIGHUP that
 /// closing a tab sends, and a killed CLI leaves its container running.
-pub fn remove(docker: &Path, name: &str) {
+pub fn remove_container(docker: &Path, name: &str) {
     let _ = Command::new(docker)
         .args(["rm", "-f", name])
         .stdout(Stdio::null())
@@ -296,8 +299,99 @@ pub fn sweep(docker: &Path) {
             .status()
             .is_ok_and(|s| s.success());
         if !alive {
-            remove(docker, name);
+            remove_container(docker, name);
         }
+    }
+}
+
+/// Entries of ~/.claude that Claude Code writes while it runs; a restricted tab keeps its own.
+const CLAUDE_STATE: [&str; 19] = [
+    "backups",
+    "cache",
+    "debug",
+    "downloads",
+    "file-history",
+    "history.jsonl",
+    "ide",
+    "logs",
+    "mcp-needs-auth-cache.json",
+    "paste-cache",
+    "plans",
+    "projects",
+    "session-env",
+    "sessions",
+    "shell-snapshots",
+    "state",
+    "statsig",
+    "telemetry",
+    "todos",
+];
+
+/// Fills `dir`, Claude Code's config folder in restricted tabs, from the user's own, so
+/// settings, hooks, MCP servers, plugins and skills work there too. Config entries become
+/// links into ~/.claude, which the sandbox can read but not change; state entries and
+/// dotfiles stay the sandbox's own. ~/.claude.json is copied afresh, so changes made in the
+/// sandbox never reach the real one.
+///
+/// Runs outside the sandbox on a folder the sandbox can write, so it never writes through
+/// anything found there: entries are removed, not opened, before being replaced.
+pub fn prepare_claude(dir: &Path, home: &Path) -> io::Result<()> {
+    mirror(&home.join(".claude"), dir, &CLAUDE_STATE)?;
+    // Plugin code stays read-only (its hooks run on the host too); plugins keep state in store.
+    mirror(
+        &home.join(".claude/plugins"),
+        &dir.join("plugins"),
+        &["store"],
+    )?;
+    match fs::read(home.join(".claude.json")) {
+        Ok(bytes) => {
+            let tmp = dir.join(".claude.json.tine");
+            remove(&tmp)?;
+            // create_new refuses an existing path, a planted link included.
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&tmp)?
+                .write_all(&bytes)?;
+            // rename replaces whatever is at the destination, never what a link points to.
+            fs::rename(&tmp, dir.join(".claude.json"))
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Makes `dir` a real folder holding a link to each entry of `real`, except dotfiles and
+/// `own` (left to the sandbox) and "plugins" (mirrored on its own).
+fn mirror(real: &Path, dir: &Path, own: &[&str]) -> io::Result<()> {
+    if fs::symlink_metadata(dir).is_ok_and(|m| !m.is_dir()) {
+        remove(dir)?;
+    }
+    fs::create_dir_all(dir)?;
+    for entry in fs::read_dir(real).into_iter().flatten().flatten() {
+        let name = entry.file_name();
+        let text = name.to_string_lossy();
+        if text.starts_with('.') || text == "plugins" || own.contains(&text.as_ref()) {
+            continue;
+        }
+        let (link, target) = (dir.join(&name), real.join(&name));
+        if fs::read_link(&link).is_ok_and(|t| t == target) {
+            continue;
+        }
+        remove(&link)?;
+        symlink(&target, &link)?;
+    }
+    Ok(())
+}
+
+/// Removes a file, link or folder; a link is removed itself, never followed.
+fn remove(p: &Path) -> io::Result<()> {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.is_dir() => fs::remove_dir_all(p),
+        Ok(_) => fs::remove_file(p),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
     }
 }
 
@@ -373,6 +467,53 @@ mod tests {
         ] {
             check_cwd(Path::new(ok), home).unwrap();
         }
+    }
+
+    #[test]
+    fn claude_config_is_linked_read_only_and_state_stays_separate() {
+        use crate::fs::tests::TempDir;
+        let (home, dir, victim) = (TempDir::new(), TempDir::new(), TempDir::new());
+        fs::create_dir_all(home.path(".claude/skills")).unwrap();
+        fs::create_dir_all(home.path(".claude/projects")).unwrap();
+        fs::create_dir_all(home.path(".claude/plugins/cache")).unwrap();
+        fs::create_dir_all(home.path(".claude/plugins/store")).unwrap();
+        fs::write(home.path(".claude/settings.json"), "{}").unwrap();
+        fs::write(home.path(".claude/.flag"), "").unwrap();
+        fs::write(home.path(".claude.json"), "{\"mcpServers\":{}}").unwrap();
+        // The sandbox planted links, hoping tine writes through them.
+        fs::write(victim.path("zshrc"), "mine").unwrap();
+        symlink(victim.path("zshrc"), dir.path(".claude.json")).unwrap();
+        symlink(victim.path("zshrc"), dir.path("settings.json")).unwrap();
+        fs::create_dir_all(dir.path("skills")).unwrap();
+
+        prepare_claude(&dir.0, &home.0).unwrap();
+        prepare_claude(&dir.0, &home.0).unwrap(); // again: links already in place
+
+        assert_eq!(fs::read_to_string(victim.path("zshrc")).unwrap(), "mine");
+        assert_eq!(
+            fs::read_link(dir.path("settings.json")).unwrap(),
+            home.path(".claude/settings.json")
+        );
+        assert_eq!(
+            fs::read_link(dir.path("skills")).unwrap(),
+            home.path(".claude/skills")
+        );
+        assert!(
+            fs::symlink_metadata(dir.path(".claude.json"))
+                .unwrap()
+                .is_file()
+        );
+        assert_eq!(
+            fs::read_to_string(dir.path(".claude.json")).unwrap(),
+            "{\"mcpServers\":{}}"
+        );
+        assert!(!dir.path("projects").exists() && !dir.path(".flag").exists());
+        assert!(fs::symlink_metadata(dir.path("plugins")).unwrap().is_dir());
+        assert_eq!(
+            fs::read_link(dir.path("plugins/cache")).unwrap(),
+            home.path(".claude/plugins/cache")
+        );
+        assert!(!dir.path("plugins/store").exists());
     }
 
     #[test]

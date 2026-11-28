@@ -286,7 +286,7 @@ impl PtyManager {
             .remove(&id)
             .ok_or_else(|| AppError::new("not_found", format!("no pty {id}")))?;
         if let Some((docker, name)) = &session.container {
-            sandbox::remove(docker, name);
+            sandbox::remove_container(docker, name);
             // Removing the container ends the docker CLI too, so it may be gone already.
             let _ = session.killer.lock().unwrap().kill();
             return Ok(());
